@@ -58,7 +58,10 @@ export function BarChart({
   )
 }
 
-export function DonutChart({ data, colors }: { data: { nombre: string; valor: number; color: string }[] }) {
+export function DonutChart({
+  data,
+  colors = CHART_COLORS,
+}: { data: { nombre: string; valor: number; color?: string }[]; colors?: string[] }) {
   const total = data.reduce((acc, d) => acc + d.valor, 0) || 1
   let cumulative = 0
 
