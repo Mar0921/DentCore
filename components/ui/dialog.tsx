@@ -46,7 +46,7 @@ function Dialog({
     <DialogContext.Provider value={{ open: openValue, setOpen }}>
       <div className="fixed inset-0 z-50 flex items-center justify-center">
         <div className="absolute inset-0 bg-black/50" onClick={() => setOpen(false)} />
-        <div className="relative z-10 mx-4 w-full max-w-sm">{children}</div>
+        <div className="relative z-10 mx-4">{children}</div>
       </div>
     </DialogContext.Provider>
   )
@@ -54,7 +54,7 @@ function Dialog({
 
 function DialogContent({ children, className }: { children: React.ReactNode; className?: string }) {
   return (
-    <div className={cn('rounded-2xl border border-border bg-card p-6 shadow-2xl', className)}>
+    <div className={cn('mx-auto rounded-2xl border border-border bg-card p-6 shadow-2xl', className)}>
       {children}
     </div>
   )

@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 import { useState } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
@@ -18,14 +18,13 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { analisisProductividad } from '@/data/analisis-productividad-mock'
-import type { AnalisisProductividadData } from '@/types/analisis-productividad'
+import type { AnalisisProductividadData, TareaMensual } from '@/types/analisis-productividad'
 import { BarChart, DonutChart, LineChart, CHART_COLORS, fmt } from '../analisis/charts'
 
 const tabs = [
   { key: 'resumen', label: 'Resumen', href: '/analisis/productividad' },
   { key: 'tareas', label: 'Tareas realizadas', href: '/analisis/productividad/tareas' },
   { key: 'tecnicos', label: 'Técnicos', href: '/analisis/productividad/tecnicos' },
-  { key: 'maquinas', label: 'Máquinas', href: '/analisis/productividad/maquinas' },
   { key: 'externalizaciones', label: 'Externalizaciones', href: '/analisis/productividad/externalizaciones' },
 ] as const
 
@@ -63,6 +62,13 @@ function ProductividadDashboard({ datos }: { datos?: AnalisisProductividadData }
   }
 
   const data = datos ?? analisisProductividad
+
+  // Transform data for charts that need index signature
+  const tareasChartData = data.tareasMensuales.map((t: TareaMensual) => ({
+    mes: t.mes,
+    tareas: t.tareas,
+    piezas: t.piezas,
+  }))
 
   const tecnicosChart = data.empleados.map((e, i) => ({
     nombre: e.nombre,
@@ -140,7 +146,7 @@ function ProductividadDashboard({ datos }: { datos?: AnalisisProductividadData }
             </CardHeader>
             <CardContent>
               <LineChart
-                data={data.tareasMensuales}
+                data={tareasChartData}
                 keys={['tareas', 'piezas']}
                 colors={['#342764', '#6366f1']}
               />
@@ -174,7 +180,7 @@ function ProductividadDashboard({ datos }: { datos?: AnalisisProductividadData }
               <SeccionHeader titulo="Técnicos" subtitulo="Distribución de tareas por empleado" />
             </CardHeader>
             <CardContent>
-              <DonutChart data={tecnicosChart} colors={CHART_COLORS} />
+<DonutChart data={tecnicosChart} />
               <div className="mt-4 space-y-2">
                 {data.empleados.map((e) => (
                   <div key={e.nombre} className="flex items-center justify-between">
@@ -191,7 +197,7 @@ function ProductividadDashboard({ datos }: { datos?: AnalisisProductividadData }
               <SeccionHeader titulo="Máquinas" subtitulo="Tareas por máquina" />
             </CardHeader>
             <CardContent>
-              <DonutChart data={maquinasChart} colors={CHART_COLORS} />
+              <DonutChart data={maquinasChart} />
               <div className="mt-4 space-y-2">
                 {data.maquinas.map((m) => (
                   <div key={m.nombre} className="flex items-center justify-between">
@@ -208,7 +214,7 @@ function ProductividadDashboard({ datos }: { datos?: AnalisisProductividadData }
               <SeccionHeader titulo="Externalizaciones" subtitulo="Tareas enviadas a proveedores externos" />
             </CardHeader>
             <CardContent>
-              <DonutChart data={externalChart} colors={CHART_COLORS} />
+              <DonutChart data={externalChart} />
               <div className="mt-4 space-y-2">
                 {data.externalizaciones.map((e) => (
                   <div key={e.nombre} className="flex items-center justify-between">
@@ -230,7 +236,7 @@ function ProductividadDashboard({ datos }: { datos?: AnalisisProductividadData }
           </CardHeader>
           <CardContent>
             <LineChart
-              data={data.tareasMensuales}
+              data={tareasChartData}
               keys={['tareas', 'piezas']}
               colors={['#342764', '#6366f1']}
               height={260}
@@ -262,7 +268,7 @@ function ProductividadDashboard({ datos }: { datos?: AnalisisProductividadData }
             <p className="mt-1 text-xs text-muted-foreground">Rendimiento por empleado</p>
           </CardHeader>
           <CardContent>
-            <DonutChart data={tecnicosChart} colors={CHART_COLORS} />
+            <DonutChart data={tecnicosChart} />
             <div className="mt-4 space-y-2">
               {data.empleados.map((e) => (
                 <div key={e.nombre} className="flex items-center justify-between">
@@ -272,50 +278,15 @@ function ProductividadDashboard({ datos }: { datos?: AnalisisProductividadData }
               ))}
             </div>
           </CardContent>
-        </Card>
-      )}
-
-      {tab === 'maquinas' && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Máquinas</CardTitle>
-            <p className="mt-1 text-xs text-muted-foreground">Tareas por máquina</p>
-          </CardHeader>
-          <CardContent>
-            <DonutChart data={maquinasChart} colors={CHART_COLORS} />
-            <div className="mt-4 space-y-2">
-              {data.maquinas.map((m) => (
-                <div key={m.nombre} className="flex items-center justify-between">
-                  <span className="truncate text-xs text-foreground">{m.nombre}</span>
-                  <span className="text-xs font-medium text-primary">{fmt(m.tareas)} tareas</span>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {tab === 'externalizaciones' && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Externalizaciones</CardTitle>
-            <p className="mt-1 text-xs text-muted-foreground">Tareas enviadas a proveedores externos</p>
-          </CardHeader>
-          <CardContent>
-            <DonutChart data={externalChart} colors={CHART_COLORS} />
-            <div className="mt-4 space-y-2">
-              {data.externalizaciones.map((e) => (
-                <div key={e.nombre} className="flex items-center justify-between">
-                  <span className="truncate text-xs text-foreground">{e.nombre}</span>
-                  <span className="text-xs font-medium text-primary">{fmt(e.tareas)} tareas</span>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
+          </Card>
+        )}
     </div>
   )
 }
 
 export { ProductividadDashboard }
+
+
+
+
+

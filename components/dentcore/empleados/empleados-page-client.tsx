@@ -11,6 +11,7 @@ import { Plus, Edit, Trash2, UserRound, Eye, EyeOff, Building2 } from "lucide-re
 
 export function EmpleadosPageClient() {
   const [empleados, setEmpleados] = useState<any[]>([])
+  const [departamentos, setDepartamentos] = useState<any[]>([])
   const [laboratorioId, setLaboratorioId] = useState<string | null>(null)
   const [open, setOpen] = useState(false)
   const [editing, setEditing] = useState<any | null>(null)
@@ -20,6 +21,7 @@ export function EmpleadosPageClient() {
     contraseña: "",
     rol: "tecnico",
     departamento: "",
+    departamento_id: "",
     telefono: "",
     activo: true,
   })
@@ -28,11 +30,20 @@ export function EmpleadosPageClient() {
   useEffect(() => {
     loadLaboratorio()
     loadEmpleados()
+    loadDepartamentos()
   }, [])
 
   async function loadLaboratorio() {
     const { data } = await supabase.from("laboratorio").select("id").limit(1)
     if (data && data.length > 0) setLaboratorioId(data[0].id)
+  }
+
+  async function loadDepartamentos() {
+    const { data, error } = await supabase
+      .from('departamentos')
+      .select('id, nombre')
+      .order('nombre', { ascending: true })
+    if (!error && data) setDepartamentos(data)
   }
 
   async function loadEmpleados() {
@@ -48,6 +59,7 @@ export function EmpleadosPageClient() {
       contraseña: "",
       rol: em.rol,
       departamento: em.departamento || "",
+      departamento_id: em.departamento_id || "",
       telefono: em.telefono || "",
       activo: em.activo,
     })
@@ -62,6 +74,7 @@ export function EmpleadosPageClient() {
       contraseña: "",
       rol: "tecnico",
       departamento: "",
+      departamento_id: "",
       telefono: "",
       activo: true,
     })
@@ -77,6 +90,9 @@ export function EmpleadosPageClient() {
 
       if (editing) {
         const updates: any = { ...formData }
+        delete updates.departamento
+        delete updates.departamento_id
+        if (formData.departamento_id) updates.departamento_id = formData.departamento_id
         if (!updates.contraseña) delete updates.contraseña
         const { error } = await supabase.from("empleados").update(updates).eq("id", editing.id)
         if (error) throw error
@@ -85,18 +101,18 @@ export function EmpleadosPageClient() {
           alert("La contraseña debe tener al menos 6 caracteres.")
           return
         }
-        const { error } = await supabase.from("empleados").insert({
-          ...formData,
-          contraseña: formData.contraseña,
-          laboratorio_id: laboratorioId,
-        })
+        const toInsert: any = { ...formData, contraseña: formData.contraseña, laboratorio_id: laboratorioId }
+        delete toInsert.departamento
+        if (!toInsert.departamento_id) delete toInsert.departamento_id
+        const { error } = await supabase.from("empleados").insert(toInsert)
         if (error) throw error
       }
       setOpen(false)
       loadEmpleados()
     } catch (err: any) {
-      console.error("Error:", err)
-      alert("Error al guardar: " + err.message)
+      console.error("Error completo:", err)
+      const msg = err?.message || err?.details || err?.hint || JSON.stringify(err) || "Error desconocido"
+      alert("Error al guardar: " + msg)
     }
   }
 
@@ -160,7 +176,7 @@ export function EmpleadosPageClient() {
                   <div>
                     <p className="font-semibold text-primary">{em.nombre}</p>
                     <p className="text-sm text-muted-foreground">
-                      {em.rol} - {em.departamento || "Sin departamento"}
+                      {em.rol} - {departamentos.find(d => d.id === em.departamento_id)?.nombre || em.departamento || "Sin departamento"}
                     </p>
                     <p className="text-xs text-muted-foreground">{em.email}</p>
                   </div>
@@ -241,11 +257,16 @@ export function EmpleadosPageClient() {
               </div>
               <div>
                 <label className="text-sm font-medium">Departamento</label>
-                <Input
-                  value={formData.departamento}
-                  onChange={(e) => setFormData({ ...formData, departamento: e.target.value })}
-                  placeholder="Ej: Producción"
-                />
+                <select
+                  value={formData.departamento_id || ""}
+                  onChange={(e) => setFormData({ ...formData, departamento_id: e.target.value })}
+                  className="h-10 w-full rounded-lg border border-border bg-card px-3 text-sm"
+                >
+                  <option value="">Sin departamento</option>
+                  {departamentos.map((dep) => (
+                    <option key={dep.id} value={dep.id}>{dep.nombre}</option>
+                  ))}
+                </select>
               </div>
             </div>
             <div>

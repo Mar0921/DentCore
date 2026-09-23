@@ -142,14 +142,10 @@ export function LabInfo() {
               Resumen rápido
             </h3>
           </div>
-          <div className="grid grid-cols-2 gap-4 p-6">
+          <div className="grid grid-cols-3 gap-4 p-6">
             <div className="rounded-xl bg-secondary/50 p-4 text-center">
               <p className="text-2xl font-bold text-primary">5</p>
               <p className="text-xs text-muted-foreground">Empleados</p>
-            </div>
-            <div className="rounded-xl bg-secondary/50 p-4 text-center">
-              <p className="text-2xl font-bold text-primary">5</p>
-              <p className="text-xs text-muted-foreground">Odontólogos</p>
             </div>
             <div className="rounded-xl bg-secondary/50 p-4 text-center">
               <p className="text-2xl font-bold text-primary">8</p>

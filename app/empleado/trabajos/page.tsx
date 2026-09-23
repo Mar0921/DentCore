@@ -4,7 +4,7 @@ import { TrabajosTable } from '@/components/dentcore/trabajos/trabajos-table'
 export default function EmpleadoTrabajosPage() {
   return (
     <AppShell sidebar="empleado">
-      <TrabajosTable />
+      <TrabajosTable empleado={true} />
     </AppShell>
   )
 }

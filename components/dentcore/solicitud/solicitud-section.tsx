@@ -439,7 +439,7 @@ export function SolicitudSection({
     })
   }
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || [])
     const validFiles = files.filter((file) => {
       const validTypes = ['image/jpeg', 'image/png', 'image/gif', 'application/pdf']
@@ -447,11 +447,25 @@ export function SolicitudSection({
       return validTypes.includes(file.type) && file.size <= maxSize
     })
 
-    const uploaded: UploadedFile[] = validFiles.map((file) => ({
-      name: file.name,
-      url: URL.createObjectURL(file),
-      size: file.size,
-    }))
+    const uploaded: UploadedFile[] = []
+    for (const file of validFiles) {
+      const ext = file.name.split('.').pop() || ''
+      const storagePath = `public/${Date.now()}_${Math.random().toString(36).slice(2, 9)}.${ext}`
+      const { error: uploadError } = await supabase.storage
+        .from('solicitudes-documentos')
+        .upload(storagePath, file)
+
+      if (!uploadError) {
+        const { data: { publicUrl } } = supabase.storage
+          .from('solicitudes-documentos')
+          .getPublicUrl(storagePath)
+        uploaded.push({
+          name: file.name,
+          url: publicUrl,
+          size: file.size,
+        })
+      }
+    }
 
     if (uploaded.length > 0) {
       onUpdate({ uploadedFiles: [...uploadedFiles, ...uploaded] })

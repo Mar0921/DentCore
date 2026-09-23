@@ -22,8 +22,6 @@ import { BarChart, DonutChart, CHART_COLORS, fmt } from './charts'
 
 const tabs = [
   { key: 'resumen', label: 'Resumen' },
-  { key: 'facturacion', label: 'Facturación' },
-  { key: 'albaranes', label: 'Albaranes' },
   { key: 'informe', label: 'Informe de ventas' },
 ] as const
 
@@ -221,64 +219,6 @@ export function VentasDashboard({ datos }: { datos?: AnalisisVentasData }) {
             </CardContent>
           </Card>
         </div>
-      )}
-
-      {tab === 'facturacion' && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Facturación detallada</CardTitle>
-            <p className="mt-1 text-xs text-muted-foreground">Desglose completo de facturación pendiente y cobrada</p>
-          </CardHeader>
-          <CardContent>
-            <BarChart
-              data={factData}
-              keys={['pendiente', 'cobrado']}
-              colors={['#8b5cf6', '#342764']}
-              height={240}
-            />
-          </CardContent>
-        </Card>
-      )}
-
-      {tab === 'albaranes' && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Albaranes detallados</CardTitle>
-            <p className="mt-1 text-xs text-muted-foreground">Facturados, almacenados y enviados</p>
-          </CardHeader>
-          <CardContent>
-            <BarChart
-              data={albData}
-              keys={['facturados', 'almacenados', 'enviados']}
-              colors={['#342764', '#6366f1', '#8b5cf6']}
-              height={240}
-            />
-          </CardContent>
-        </Card>
-      )}
-
-      {tab === 'informe' && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Informe de ventas</CardTitle>
-            <p className="mt-1 text-xs text-muted-foreground">Resumen ejecutivo y evolución comercial</p>
-          </CardHeader>
-          <CardContent>
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              {indicators.map((ind) => (
-                <div key={ind.label} className="rounded-lg border border-border p-4">
-                  <span className="text-xs text-muted-foreground">{ind.label}</span>
-                  <p className="mt-1 text-xl font-bold text-primary">{fmt(ind.valor)}</p>
-                  <span className="text-xs text-muted-foreground">{ind.trabajos} trabajos</span>
-                </div>
-              ))}
-            </div>
-            <div className="mt-4 rounded-lg border border-border p-4">
-              <span className="text-xs text-muted-foreground">Total anual</span>
-              <p className="mt-1 text-2xl font-bold text-primary">{fmt(data.totalAnual)}</p>
-            </div>
-          </CardContent>
-        </Card>
       )}
     </div>
   )

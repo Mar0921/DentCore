@@ -21,7 +21,6 @@ import { VentasDashboard } from './ventas-dashboard'
 import { TrabajosDashboard } from './trabajos-dashboard'
 import { ProductividadDashboard } from './productividad-dashboard'
 import { CalidadDashboard } from './calidad-dashboard'
-import { ComprasDashboard } from './compras-dashboard'
 import { ControlAvanzadoDashboard } from './control-avanzado-dashboard'
 import { BarChart, DonutChart, CHART_COLORS, fmt } from './charts'
 import { analisisVentas } from '@/data/analisis-ventas-mock'
@@ -31,7 +30,6 @@ const tabs = [
   { key: 'trabajos', label: 'Trabajos', href: '/analisis/trabajos' },
   { key: 'productividad', label: 'Productividad', href: '/analisis/productividad' },
   { key: 'calidad', label: 'Calidad', href: '/analisis/calidad' },
-  { key: 'compras', label: 'Compras', href: '/analisis/compras' },
   { key: 'control', label: 'Control avanzado', href: '/analisis/control-avanzado' },
 ] as const
 
@@ -116,8 +114,6 @@ export function EmpleadoAnalisisDashboard() {
       {tab === 'productividad' && <ProductividadDashboard />}
 
       {tab === 'calidad' && <CalidadDashboard />}
-
-      {tab === 'compras' && <ComprasDashboard />}
 
       {tab === 'control' && <ControlAvanzadoDashboard />}
     </div>

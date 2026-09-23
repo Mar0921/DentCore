@@ -24,7 +24,17 @@ export default function EmpleadoPerfilPage() {
           .eq('email', email)
           .maybeSingle()
 
-        setEmpleado(data)
+        let deptoNombre = null
+        if (data?.departamento_id) {
+          const { data: dept } = await supabase
+            .from('departamentos')
+            .select('nombre, descripcion')
+            .eq('id', data.departamento_id)
+            .maybeSingle()
+          deptoNombre = dept
+        }
+
+        setEmpleado({ ...data, departamento: deptoNombre })
       } catch {
         // ignore
       } finally {
@@ -59,6 +69,7 @@ export default function EmpleadoPerfilPage() {
                 <Info label="Email" value={empleado.email || userEmail || '—'} />
                 <Info label="Rol" value={empleado.rol || '—'} />
                 <Info label="Teléfono" value={empleado.telefono || '—'} />
+                <Info label="Departamento" value={empleado.departamento?.nombre || 'Sin departamento'} />
               </CardContent>
             </Card>
 

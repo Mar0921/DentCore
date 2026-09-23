@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { Search, Plus, Edit, Trash2, Tag, UserPlus, MoreHorizontal, Link as LinkIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -18,6 +19,14 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { supabase } from '@/lib/supabase'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from '@/components/ui/dialog'
 
 type TabClientes = 'clientes' | 'etiquetas' | 'solicitudes'
 
@@ -29,14 +38,20 @@ interface ClienteRow {
   localidad: string | null
   telefono: string | null
   celular: string | null
+  email: string | null
+  clinica: string | null
+  especialidad: string | null
   tieneAcceso: boolean
 }
 
 export function ClientesTable() {
+  const router = useRouter()
   const [tabActiva, setTabActiva] = useState<TabClientes>('clientes')
   const [search, setSearch] = useState('')
   const [clientes, setClientes] = useState<ClienteRow[]>([])
   const [loading, setLoading] = useState(true)
+  const [clienteAEliminar, setClienteAEliminar] = useState<ClienteRow | null>(null)
+  const [deleting, setDeleting] = useState(false)
 
   useEffect(() => {
     loadClientes()
@@ -50,6 +65,7 @@ export function ClientesTable() {
         .select('*')
         .order('created_at', { ascending: false })
       if (!error && data) {
+        const odontoMap = await loadOdontologosPorNombre()
         setClientes(
           data.map((c: any) => ({
             id: c.id,
@@ -59,6 +75,9 @@ export function ClientesTable() {
             localidad: c.localidad,
             telefono: c.telefono,
             celular: c.celular,
+            email: c.email,
+            clinica: c.clinica,
+            especialidad: odontoMap[c.nombre || ''] ?? null,
             tieneAcceso: c.tiene_acceso ?? false,
           })),
         )
@@ -68,6 +87,23 @@ export function ClientesTable() {
     } finally {
       setLoading(false)
     }
+  }
+
+  async function loadOdontologosPorNombre(): Promise<Record<string, string>> {
+    const map: Record<string, string> = {}
+    try {
+      const { data, error } = await supabase
+        .from('odontologos')
+        .select('nombre, especialidad')
+      if (!error && data) {
+        for (const o of data as any[]) {
+          if (o.nombre && !(o.nombre in map)) map[o.nombre] = o.especialidad || ''
+        }
+      }
+    } catch (err) {
+      console.error('Error cargando odontólogos:', err)
+    }
+    return map
   }
 
   const filtered = clientes.filter((c) => {
@@ -83,6 +119,24 @@ export function ClientesTable() {
     return true
   })
 
+  async function handleConfirmarEliminar() {
+    if (!clienteAEliminar || deleting) return
+    setDeleting(true)
+    try {
+      const { error } = await supabase
+        .from('cliente')
+        .delete()
+        .eq('id', clienteAEliminar.id)
+      if (error) throw error
+      setClienteAEliminar(null)
+      loadClientes()
+    } catch (err: any) {
+      alert('Error al eliminar: ' + err.message)
+    } finally {
+      setDeleting(false)
+    }
+  }
+
   return (
     <div className="space-y-4">
       {/* Header */}
@@ -93,7 +147,7 @@ export function ClientesTable() {
             Administra las clínicas y clientes del laboratorio
           </p>
         </div>
-        <Button className="gap-2 rounded-full">
+        <Button className="gap-2 rounded-full" onClick={() => router.push('/registro-cliente')}>
           <Plus className="size-4" />
           Nuevo cliente
         </Button>
@@ -184,65 +238,86 @@ export function ClientesTable() {
             <CardContent className="p-0">
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-sm">
-                  <thead>
-                    <tr className="border-b border-border bg-secondary/30">
-                      <th className="px-4 py-3 font-medium text-muted-foreground">
-                        Nombre
-                      </th>
-                      <th className="px-4 py-3 font-medium text-muted-foreground">
-                        Calle
-                      </th>
-                      <th className="px-4 py-3 font-medium text-muted-foreground">
-                        Localidad
-                      </th>
-                      <th className="px-4 py-3 font-medium text-muted-foreground">
-                        Teléfono
-                      </th>
-                      <th className="px-4 py-3 font-medium text-muted-foreground">
-                        Celular
-                      </th>
-                      <th className="px-4 py-3 font-medium text-muted-foreground text-center">
-                        ¿Tiene acceso?
-                      </th>
-                      <th className="px-4 py-3 text-right font-medium text-muted-foreground">
-                        Acciones
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border">
-                    {loading ? (
-                      <tr>
-                        <td colSpan={7} className="px-4 py-8 text-center text-sm text-muted-foreground">
-                          Cargando clientes...
-                        </td>
-                      </tr>
-                    ) : filtered.length === 0 ? (
-                      <tr>
-                        <td colSpan={7} className="px-4 py-12 text-center text-sm text-muted-foreground">
-                          No se encontraron clientes con ese criterio.
-                        </td>
-                      </tr>
-                    ) : (
-                      filtered.map((cliente) => (
-                        <tr key={cliente.id} className="transition-colors hover:bg-secondary/30">
-                          <td className="px-4 py-4">
-                          <span className="font-medium text-primary hover:underline cursor-pointer">
-                            {cliente.codigo ? `${cliente.codigo} - ` : ''}{cliente.nombre}
-                          </span>
-                          </td>
-                          <td className="px-4 py-4 text-muted-foreground">
-                            {cliente.calle || '—'}
-                          </td>
-                          <td className="px-4 py-4 text-muted-foreground">
-                            {cliente.localidad || '—'}
-                          </td>
-                          <td className="px-4 py-4 text-muted-foreground">
-                            {cliente.telefono || '—'}
-                          </td>
-                          <td className="px-4 py-4 text-muted-foreground">
-                            {cliente.celular || '—'}
-                          </td>
-                          <td className="px-4 py-4 text-center">
+                   <thead>
+                     <tr className="border-b border-border bg-secondary/30">
+                       <th className="px-4 py-3 font-medium text-muted-foreground">
+                         Nombre
+                       </th>
+                       <th className="px-4 py-3 font-medium text-muted-foreground">
+                         Email
+                       </th>
+                       <th className="px-4 py-3 font-medium text-muted-foreground">
+                         Calle
+                       </th>
+                       <th className="px-4 py-3 font-medium text-muted-foreground">
+                         Localidad
+                       </th>
+                       <th className="px-4 py-3 font-medium text-muted-foreground">
+                         Teléfono
+                       </th>
+                       <th className="px-4 py-3 font-medium text-muted-foreground">
+                         Celular
+                       </th>
+                       <th className="px-4 py-3 font-medium text-muted-foreground">
+                         Clínica
+                       </th>
+                       <th className="px-4 py-3 font-medium text-muted-foreground">
+                         Especialidad
+                       </th>
+                       <th className="px-4 py-3 font-medium text-muted-foreground text-center">
+                         ¿Tiene acceso?
+                       </th>
+                       <th className="px-4 py-3 text-right font-medium text-muted-foreground">
+                         Acciones
+                       </th>
+                     </tr>
+                   </thead>
+                   <tbody className="divide-y divide-border">
+                     {loading ? (
+                       <tr>
+                         <td colSpan={10} className="px-4 py-8 text-center text-sm text-muted-foreground">
+                           Cargando clientes...
+                         </td>
+                       </tr>
+                     ) : filtered.length === 0 ? (
+                       <tr>
+                         <td colSpan={10} className="px-4 py-12 text-center text-sm text-muted-foreground">
+                           No se encontraron clientes con ese criterio.
+                         </td>
+                       </tr>
+                     ) : (
+                       filtered.map((cliente) => (
+                         <tr key={cliente.id} className="transition-colors hover:bg-secondary/30">
+                         <td className="px-4 py-4">
+                           <Link
+                             href={`/laboratorio/clientes/${cliente.id}`}
+                             className="font-medium text-primary hover:underline cursor-pointer"
+                           >
+                             {cliente.codigo ? `${cliente.codigo} - ` : ''}{cliente.nombre}
+                           </Link>
+                         </td>
+                         <td className="px-4 py-4 text-muted-foreground">
+                           {cliente.email || '—'}
+                         </td>
+                           <td className="px-4 py-4 text-muted-foreground">
+                             {cliente.calle || '—'}
+                           </td>
+                           <td className="px-4 py-4 text-muted-foreground">
+                             {cliente.localidad || '—'}
+                           </td>
+                           <td className="px-4 py-4 text-muted-foreground">
+                             {cliente.telefono || '—'}
+                           </td>
+                           <td className="px-4 py-4 text-muted-foreground">
+                             {cliente.celular || '—'}
+                           </td>
+                           <td className="px-4 py-4 text-muted-foreground">
+                             {cliente.clinica || '—'}
+                           </td>
+                           <td className="px-4 py-4 text-muted-foreground">
+                             {cliente.especialidad || '—'}
+                           </td>
+                           <td className="px-4 py-4 text-center">
                             <span
                               className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ${cliente.tieneAcceso ? 'bg-accent/15 text-accent' : 'bg-destructive/10 text-destructive'
                                 }`}
@@ -251,15 +326,27 @@ export function ClientesTable() {
                             </span>
                           </td>
                           <td className="px-4 py-4 text-right">
-                            <div className="flex items-center justify-end gap-1">
-                              <Button variant="ghost" size="icon" className="size-8">
-                                <Edit className="size-4" />
-                              </Button>
-                              <Button variant="ghost" size="icon" className="size-8 text-destructive hover:text-destructive">
-                                <Trash2 className="size-4" />
-                              </Button>
-                            </div>
-                          </td>
+                             <div className="flex items-center justify-end gap-1">
+                               <Button
+                                 variant="ghost"
+                                 size="icon"
+                                 className="size-8"
+                                 title="Editar cliente"
+                                 onClick={() => router.push(`/laboratorio/clientes/${cliente.id}`)}
+                               >
+                                 <Edit className="size-4" />
+                               </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="size-8 text-destructive hover:text-destructive"
+                                  title="Eliminar cliente"
+                                  onClick={() => setClienteAEliminar(cliente)}
+                                >
+                                  <Trash2 className="size-4" />
+                                </Button>
+                             </div>
+                           </td>
                         </tr>
                       ))
                     )}
@@ -290,6 +377,35 @@ export function ClientesTable() {
           </CardContent>
         </Card>
       )}
+
+      <Dialog
+        open={!!clienteAEliminar}
+        onOpenChange={(open) => !open && setClienteAEliminar(null)}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>¿Eliminar cliente?</DialogTitle>
+            <DialogDescription>
+              Esta acción no se puede deshacer. Se eliminará al cliente{' '}
+              <span className="font-medium">{clienteAEliminar?.nombre || ''}</span>{' '}
+              y sus datos asociados dejarán de estar disponibles.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setClienteAEliminar(null)}>
+              Cancelar
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleConfirmarEliminar}
+              disabled={deleting}
+              className="gap-2"
+            >
+              {deleting ? 'Eliminando…' : 'Eliminar'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

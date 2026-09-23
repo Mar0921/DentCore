@@ -21,7 +21,6 @@ import { VentasDashboard } from './ventas-dashboard'
 import { TrabajosDashboard } from './trabajos-dashboard'
 import { ProductividadDashboard } from './productividad-dashboard'
 import { CalidadDashboard } from './calidad-dashboard'
-import { ComprasDashboard } from './compras-dashboard'
 import { ControlAvanzadoDashboard } from './control-avanzado-dashboard'
 import { analisisVentas } from '@/data/analisis-ventas-mock'
 
@@ -30,7 +29,6 @@ const tabs = [
   { key: 'trabajos', label: 'Trabajos', href: '/laboratorio/analisis/trabajos' },
   { key: 'productividad', label: 'Productividad', href: '/laboratorio/analisis/productividad' },
   { key: 'calidad', label: 'Calidad', href: '/laboratorio/analisis/calidad' },
-  { key: 'compras', label: 'Compras', href: '/laboratorio/analisis/compras' },
   { key: 'control', label: 'Control avanzado', href: '/laboratorio/analisis/control-avanzado' },
 ] as const
 
@@ -124,8 +122,6 @@ export function AdminAnalisisDashboard() {
       {tab === 'productividad' && <ProductividadDashboard />}
 
       {tab === 'calidad' && <CalidadDashboard />}
-
-      {tab === 'compras' && <ComprasDashboard />}
 
       {tab === 'control' && <ControlAvanzadoDashboard />}
     </div>

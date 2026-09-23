@@ -3,14 +3,13 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { cn } from '@/lib/utils'
-import { BarChart3, Briefcase, Gauge, Shield, ShoppingCart, Settings2 } from 'lucide-react'
+import { BarChart3, Briefcase, Gauge, Shield, Settings2 } from 'lucide-react'
 
 const items = [
   { label: 'Ventas', href: '/analisis/ventas', icon: BarChart3 },
   { label: 'Trabajos', href: '/analisis/trabajos', icon: Briefcase },
   { label: 'Productividad', href: '/analisis/productividad', icon: Gauge },
   { label: 'Calidad', href: '/analisis/calidad', icon: Shield },
-  { label: 'Compras', href: '/analisis/compras', icon: ShoppingCart },
   { label: 'Control avanzado', href: '/analisis/control-avanzado', icon: Settings2 },
 ]
 

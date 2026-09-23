@@ -4,7 +4,7 @@ import { AppShell } from '@/components/dentcore/app-shell'
 export default function EmpleadoFasesPage() {
   return (
     <AppShell sidebar="empleado">
-      <FasesPageClient />
+      <FasesPageClient modo="empleado" />
     </AppShell>
   )
 }

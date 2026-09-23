@@ -81,7 +81,8 @@ export default function SolicitudesPage() {
   const router = useRouter()
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<string>('all')
-  const [requests, setRequests] = useState<RequestItem[]>(mockRequests)
+  const [requests, setRequests] = useState<RequestItem[]>([])
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     const fetchSolicitudes = async () => {
@@ -90,9 +91,14 @@ export default function SolicitudesPage() {
         const result = await res.json()
         if (res.ok && result.data && result.data.length > 0) {
           setRequests(result.data.map(mapSolicitudToRequest))
+        } else {
+          setRequests([])
         }
       } catch {
-        // Keep mock data as fallback
+        // Fall back to mock data only when the API is unavailable
+        setRequests(mockRequests)
+      } finally {
+        setLoading(false)
       }
     }
     fetchSolicitudes()
@@ -159,7 +165,14 @@ export default function SolicitudesPage() {
           </div>
         </CardHeader>
         <CardContent className="p-0">
-          {filtered.length === 0 ? (
+          {loading ? (
+            <div className="px-6 py-12 text-center">
+              <p className="text-sm font-medium text-primary">Cargando solicitudes…</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Obteniendo el listado de solicitudes.
+              </p>
+            </div>
+          ) : filtered.length === 0 ? (
             <div className="px-6 py-12 text-center">
               <p className="text-sm font-medium text-primary">No hay solicitudes</p>
               <p className="mt-1 text-xs text-muted-foreground">

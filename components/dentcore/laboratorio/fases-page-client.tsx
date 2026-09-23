@@ -13,7 +13,7 @@ interface FaseConEmpleado extends Fase {
 
 const STORAGE_KEY = 'fases_asignaciones'
 
-export function FasesPageClient() {
+export function FasesPageClient({ modo = 'admin' }: { modo?: 'admin' | 'empleado' }) {
   const [fases, setFases] = useState<FaseConEmpleado[]>([])
   const [empleados, setEmpleados] = useState<Empleado[]>([])
   const [search, setSearch] = useState('')
@@ -206,9 +206,15 @@ export function FasesPageClient() {
     <div className="space-y-6">
       <div>
         <h1 className="font-heading text-2xl font-bold text-primary">
-          Fases de {labNombre ? `Laboratorio ${labNombre}` : 'Laboratorio'}
+          {modo === 'empleado'
+            ? 'Fases del proceso'
+            : `Fases de ${labNombre ? `Laboratorio ${labNombre}` : 'Laboratorio'}`}
         </h1>
-        <p className="text-sm text-muted-foreground">Etapas del proceso productivo y asignación de empleados</p>
+        <p className="text-sm text-muted-foreground">
+          {modo === 'empleado'
+            ? 'Lista de fases y empleados asignados'
+            : 'Etapas del proceso productivo y asignación de empleados'}
+        </p>
       </div>
 
       <div className="relative max-w-md">
@@ -236,7 +242,11 @@ export function FasesPageClient() {
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Proceso productivo</CardTitle>
-            <CardDescription>{filtered.length} de {fases.length} fases</CardDescription>
+             <CardDescription>
+              {modo === 'empleado'
+                ? `${fases.length} fases del proceso`
+                : `${filtered.length} de ${fases.length} fases`}
+            </CardDescription>
           </CardHeader>
           <CardContent className="p-0">
             <div className="overflow-x-auto">
@@ -249,14 +259,20 @@ export function FasesPageClient() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
-                  {filtered.map((fase) => (
+                  {filtered.map((fase) => {
+                    const emp = empleados.find((e) => e.id === fase.empleado_id)
+                    return (
                     <tr key={fase.nombre} className="transition-colors hover:bg-secondary/30">
                       <td className="px-4 py-3 text-muted-foreground">{fase.orden}</td>
                       <td className="px-4 py-3">
                         <span className="font-medium text-foreground">{fase.nombre}</span>
                       </td>
                       <td className="px-4 py-3 min-w-56">
-                        {loadingEmpleados ? (
+                        {modo === 'empleado' ? (
+                          <span className="text-sm text-foreground">
+                            {emp?.nombre || 'Sin asignar'}
+                          </span>
+                        ) : loadingEmpleados ? (
                           <span className="text-xs text-muted-foreground">Cargando...</span>
                         ) : (
                           <select
@@ -274,7 +290,8 @@ export function FasesPageClient() {
                         )}
                       </td>
                     </tr>
-                  ))}
+                    )
+                  })}
                 </tbody>
               </table>
               {filtered.length === 0 && (
@@ -288,7 +305,7 @@ export function FasesPageClient() {
         </Card>
       )}
 
-      {columnaEmpleadoSoportada === false && (
+      {modo !== 'empleado' && columnaEmpleadoSoportada === false && (
         <div className="flex items-start gap-2 rounded-lg bg-amber-50 p-3 text-sm text-amber-800">
           <AlertCircle className="mt-0.5 size-4 shrink-0" />
           <span>

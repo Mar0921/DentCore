@@ -160,7 +160,7 @@ export function PrescriptionForm({
           ? formData.productos.map(p => `${p.producto} x${p.unidades} (${p.dientes || 'sin dientes'}) a $${p.precioUnitario.toFixed(2)}`).join('; ')
           : ''
         const dientes_str = s.selectedTeeth.length > 0 ? s.selectedTeeth.join(', ') : ''
-        const archivos_array = s.uploadedFiles.length > 0 ? s.uploadedFiles.map(f => f.name) : []
+        const archivos_array = s.uploadedFiles.length > 0 ? s.uploadedFiles.map((f) => `${f.name}|${f.url || ''}`) : []
         const res = await fetch('/api/solicitudes', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },

@@ -6,7 +6,7 @@ import { supabase } from '@/lib/supabase'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { DentalChart } from '@/components/dentcore/solicitud/dental-chart'
-import { ChevronLeft } from 'lucide-react'
+import { ChevronLeft, RefreshCw, Save, X } from 'lucide-react'
 import { AppShell } from '@/components/dentcore/app-shell'
 import type { ToothStatus } from '@/components/dentcore/solicitud/solicitud-types'
 
@@ -90,6 +90,12 @@ export default function EmpleadoSolicitudDetallePage() {
   const [solicitud, setSolicitud] = useState<SolicitudLite | null>(null)
   const [fases, setFases] = useState<FaseLite[]>([])
   const [loading, setLoading] = useState(true)
+
+  const SELECT_CLASS =
+    "h-10 w-full rounded-lg border border-border bg-card px-3 text-sm text-foreground outline-none transition-colors focus:border-accent focus:ring-2 focus:ring-accent/30"
+  const [isEditingFase, setIsEditingFase] = useState(false)
+  const [selectedFaseId, setSelectedFaseId] = useState<string | null>(null)
+  const [savingFase, setSavingFase] = useState(false)
   const [encuestas, setEncuestas] = useState<{
     posAdaptacion: any | null
     buzon: any | null
@@ -101,7 +107,7 @@ export default function EmpleadoSolicitudDetallePage() {
     const fetchSolicitud = async () => {
       setLoading(true)
       try {
-        const res = await fetch(`/api/solicitudes?id=${id}`)
+        const res = await fetch(`/api/solicitudes?id=${id}&empleado=true`)
         const result = await res.json()
         setSolicitud(result?.data || null)
       } catch {
@@ -109,9 +115,15 @@ export default function EmpleadoSolicitudDetallePage() {
       } finally {
         setLoading(false)
       }
+     }
+     fetchSolicitud()
+   }, [id])
+
+  useEffect(() => {
+    if (solicitud) {
+      setSelectedFaseId(solicitud.fase_id)
     }
-    fetchSolicitud()
-  }, [id])
+  }, [solicitud])
 
   useEffect(() => {
     if (!solicitud) return
@@ -147,7 +159,7 @@ export default function EmpleadoSolicitudDetallePage() {
 
     async function loadEncuestas() {
       try {
-        const res = await fetch(`/api/encuestas?solicitud_id=${encodeURIComponent(solicitud.id)}`)
+        const res = await fetch(`/api/encuestas?solicitud_id=${encodeURIComponent(solicitud!.id)}`)
         if (!res.ok) {
           console.error('Error fetching encuestas:', await res.text())
           return
@@ -170,7 +182,7 @@ export default function EmpleadoSolicitudDetallePage() {
 
     async function loadGarantia() {
       try {
-        const res = await fetch(`/api/documentos-garantia?solicitud_id=${encodeURIComponent(solicitud.id)}`)
+        const res = await fetch(`/api/documentos-garantia?solicitud_id=${encodeURIComponent(solicitud!.id)}`)
         if (!res.ok) {
           console.error('Error fetching garantia:', await res.text())
           return
@@ -189,16 +201,50 @@ export default function EmpleadoSolicitudDetallePage() {
 
   const estadoOpt = ESTADO_OPTIONS.find((e) => e.value === solicitud?.estado)
   const prioridadOpt = PRIORIDAD_OPTIONS.find((p) => p.value === solicitud?.prioridad)
-  const faseSeleccionada = fases.find((f) => f.id === solicitud?.fase_id)
+  const faseSeleccionada = fases.find((f) => f.id === selectedFaseId ?? solicitud?.fase_id)
+  const faseEnEdicion = fases.find((f) => f.id === selectedFaseId)
   const progresoDerivado = useMemo(() => {
     if (!solicitud) return 0
-    const fase = fases.find((f) => f.id === solicitud.fase_id)
+    const fase = fases.find((f) => f.id === (selectedFaseId ?? solicitud.fase_id))
     if (fase && fases.length > 0) {
       const maxOrden = Math.max(...fases.map((f) => f.orden))
       return Math.round((fase.orden / maxOrden) * 100)
     }
     return solicitud.progreso ?? 0
-  }, [solicitud?.fase_id, solicitud?.progreso, fases])
+  }, [selectedFaseId, solicitud?.fase_id, solicitud?.progreso, fases])
+
+  async function handleSaveFase() {
+    if (!solicitud || savingFase) return
+    if (selectedFaseId === (solicitud.fase_id || null)) {
+      setIsEditingFase(false)
+      return
+    }
+    setSavingFase(true)
+    try {
+      const res = await fetch('/api/solicitudes', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: solicitud.id,
+          fase_id: selectedFaseId || null,
+          progreso: progresoDerivado,
+        }),
+      })
+      const result = await res.json()
+      if (!res.ok) throw new Error(result.error || 'Error al guardar la fase')
+      setSolicitud((prev) => (prev ? { ...prev, fase_id: selectedFaseId ?? null, progreso: progresoDerivado } : prev))
+      setIsEditingFase(false)
+    } catch (e: any) {
+      alert('Error al guardar la fase: ' + e.message)
+    } finally {
+      setSavingFase(false)
+    }
+  }
+
+  function handleCancelFase() {
+    setSelectedFaseId(solicitud?.fase_id ?? null)
+    setIsEditingFase(false)
+  }
 
   if (loading) {
     return (
@@ -263,7 +309,7 @@ export default function EmpleadoSolicitudDetallePage() {
               <p className="text-sm text-muted-foreground font-mono">#{solicitud.id}</p>
             </div>
           </div>
-          <div className="flex items-center gap-2 text-xs">
+           <div className="flex items-center gap-2 text-xs">
             {estadoOpt && (
               <span className="inline-flex rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-800">
                 {estadoOpt.label}
@@ -273,6 +319,50 @@ export default function EmpleadoSolicitudDetallePage() {
               <span className="inline-flex rounded-full bg-accent/15 px-2.5 py-0.5 text-xs font-medium text-accent">
                 {prioridadOpt.label}
               </span>
+            )}
+            {isEditingFase ? (
+              <>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="gap-1"
+                  onClick={handleCancelFase}
+                  disabled={savingFase}
+                >
+                  <X className="size-3" />
+                  Cancelar
+                </Button>
+                <Button
+                  size="sm"
+                  className="gap-1"
+                  onClick={handleSaveFase}
+                  disabled={savingFase}
+                >
+                  {savingFase ? (
+                    <>
+                      <RefreshCw className="size-3 animate-spin" />
+                      Guardando…
+                    </>
+                  ) : (
+                    <>
+                      <Save className="size-3" />
+                      Guardar fase
+                    </>
+                  )}
+                </Button>
+              </>
+            ) : (
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1"
+                onClick={() => setIsEditingFase(true)}
+                disabled={fases.length === 0}
+                title="Cambiar fase"
+              >
+                <RefreshCw className="size-3" />
+                Cambiar fase
+              </Button>
             )}
           </div>
         </div>
@@ -288,10 +378,29 @@ export default function EmpleadoSolicitudDetallePage() {
             <InfoRow label="Tipo de trabajo" value={solicitud.tipo || '—'} />
             <InfoRow label="Estado" value={estadoOpt?.label || solicitud.estado || '—'} />
             <InfoRow label="Prioridad" value={prioridadOpt?.label || solicitud.prioridad || '—'} />
-            <InfoRow
-              label="Fase actual"
-              value={faseSeleccionada ? `${faseSeleccionada.orden}. ${faseSeleccionada.nombre}` : solicitud.fase_id || '—'}
-            />
+            {isEditingFase ? (
+              <div className="sm:col-span-2">
+                <span className="text-xs text-muted-foreground">Fase actual</span>
+                <select
+                  value={selectedFaseId ?? ''}
+                  onChange={(e) => setSelectedFaseId(e.target.value || null)}
+                  className={SELECT_CLASS}
+                  disabled={fases.length === 0 || savingFase}
+                >
+                  <option value="">Seleccionar fase…</option>
+                  {fases.map((f) => (
+                    <option key={f.id} value={f.id}>
+                      {f.orden}. {f.nombre}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ) : (
+              <InfoRow
+                label="Fase actual"
+                value={faseSeleccionada ? `${faseSeleccionada.orden}. ${faseSeleccionada.nombre}` : solicitud.fase_id || '—'}
+              />
+            )}
             <InfoRow label="Progreso" value={`${progresoDerivado}%`} />
             <InfoRow label="Asignado a" value={solicitud.asignado_a || '—'} />
             <InfoRow label="Odontólogo / Clínica" value={solicitud.odontologonombre || '—'} />
@@ -312,11 +421,11 @@ export default function EmpleadoSolicitudDetallePage() {
             </div>
             <div className="sm:col-span-2">
               <span className="text-xs text-muted-foreground">Productos</span>
-              <span className="text-sm text-foreground whitespace-pre-wrap">{solicitud.productos || '—'}</span>
+              <span className="text-sm text-foreground whitespace-pre-wrap">{stripPrices(solicitud.productos) || '—'}</span>
             </div>
             <div className="sm:col-span-2">
               <span className="text-xs text-muted-foreground">Piezas enviadas</span>
-              <span className="text-sm text-foreground whitespace-pre-wrap">{solicitud.piezas_enviadas || '—'}</span>
+              <span className="text-sm text-foreground whitespace-pre-wrap">{stripPrices(solicitud.piezas_enviadas) || '—'}</span>
             </div>
             <div className="sm:col-span-2">
               <span className="text-xs text-muted-foreground">Indicaciones</span>
@@ -325,11 +434,27 @@ export default function EmpleadoSolicitudDetallePage() {
             <div className="sm:col-span-2">
               <span className="text-xs text-muted-foreground">Documentos adjuntos</span>
               {Array.isArray(solicitud.archivos) && solicitud.archivos.length > 0 ? (
-                <ul className="list-disc pl-5 text-sm text-foreground">
-                  {solicitud.archivos.map((archivo: string, idx: number) => (
-                    <li key={idx}>{archivo}</li>
-                  ))}
-                </ul>
+                <div className="mt-2 grid gap-2">
+                  {solicitud.archivos.map((archivo: string, idx: number) => {
+                    const [nombre, url] = archivo.includes('|') ? archivo.split('|') : [archivo, null]
+                    const isViewable = isViewableDocument(nombre, null)
+                    return (
+                      <div key={idx} className="flex items-center justify-between rounded-md border border-border px-3 py-2">
+                        <span className="text-sm text-foreground">{nombre || archivo}</span>
+                        {url && (
+                          <a
+                            href={url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-xs text-accent underline"
+                          >
+                            {isViewable ? 'Ver' : 'Descargar'}
+                          </a>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
               ) : (
                 <span className="text-sm text-muted-foreground">Sin documentos adjuntos</span>
               )}
@@ -480,4 +605,13 @@ function InfoRow({ label, value }: { label: string; value: React.ReactNode }) {
       <span className="mt-0.5 block text-sm text-foreground break-words">{value}</span>
     </div>
   )
+}
+
+function stripPrices(text: string | null | undefined): string {
+  if (!text) return ''
+  return text
+    .replace(/a\s*\$\s*[\d.,]+/gi, '')
+    .replace(/\$\s*[\d.,]+/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim()
 }

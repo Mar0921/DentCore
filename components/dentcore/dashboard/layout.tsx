@@ -5,9 +5,8 @@ import { usePathname } from 'next/navigation'
 import {
   LayoutDashboard,
   FlaskConical,
-  Users,
-  UserRound,
-  ClipboardList,
+   Users,
+   ClipboardList,
   LogOut,
   ChevronRight,
 } from 'lucide-react'
@@ -18,7 +17,6 @@ const navItems = [
   { href: '/laboratorio', label: 'Panel general', icon: LayoutDashboard },
   { href: '/laboratorio/informacion', label: 'Información del laboratorio', icon: FlaskConical },
   { href: '/laboratorio/empleados', label: 'Empleados', icon: Users },
-  { href: '/laboratorio/odontologos', label: 'Odontólogos', icon: UserRound },
   { href: '/laboratorio/solicitudes', label: 'Solicitudes', icon: ClipboardList },
 ]
 
