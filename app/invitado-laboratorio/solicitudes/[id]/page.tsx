@@ -8,9 +8,10 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { DentalChart } from '@/components/dentcore/solicitud/dental-chart'
-import { ChevronLeft } from 'lucide-react'
+import { ChevronLeft, FileText } from 'lucide-react'
 import { AppShell } from '@/components/dentcore/app-shell'
 import type { ToothStatus } from '@/components/dentcore/solicitud/solicitud-types'
+import { exportPageToPDF, getPageTitle } from '@/lib/pdf-export'
 
 interface FaseLite {
   id: string
@@ -214,6 +215,7 @@ export default function InvitadoSolicitudDetallePage() {
     if (!solicitud) return
 
     async function loadGarantia() {
+      if (!solicitud?.id) return
       try {
         const res = await fetch(`/api/documentos-garantia?solicitud_id=${encodeURIComponent(solicitud.id)}`)
         if (!res.ok) {
@@ -369,10 +371,12 @@ export default function InvitadoSolicitudDetallePage() {
             </Button>
             <div>
               <h1 className="font-heading text-2xl font-bold text-primary">Detalle de solicitud</h1>
-              <p className="text-sm text-muted-foreground font-mono">#{solicitud.id}</p>
+              <p className="text-sm text-muted-foreground font-mono">
+                {solicitud.codigo_trazabilidad ? `Código: ${solicitud.codigo_trazabilidad}` : `#${solicitud.id}`}
+              </p>
             </div>
           </div>
-          <div className="flex items-center gap-2 text-xs">
+          <div className="flex items-center gap-2">
             {estadoOpt && (
               <span className="inline-flex rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-800">
                 {estadoOpt.label}
@@ -383,6 +387,10 @@ export default function InvitadoSolicitudDetallePage() {
                 {prioridadOpt.label}
               </span>
             )}
+            <Button variant="outline" size="sm" className="gap-2" onClick={() => exportPageToPDF(getPageTitle())}>
+              <FileText className="size-4" />
+              Exportar PDF
+            </Button>
           </div>
         </div>
 

@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Textarea } from '@/components/ui/textarea'
 import { Checkbox, CheckboxIndicator } from '@/components/ui/checkbox'
 import { DentalChart } from './dental-chart'
+import { ZonaDentalChart } from './zona-dental-chart'
 import { CalendarIcon, Upload, File, X, Save, RotateCcw } from 'lucide-react'
 import type { SolicitudEntry, SolicitudFormData, ToothStatus, UploadedFile } from './solicitud-types'
 
@@ -266,10 +267,11 @@ export function SolicitudSection({
   onFormDataChange,
   odontologoPrecargado,
 }: SolicitudSectionProps) {
-  const { formData, servicioTipo, selectedTeeth, toothStatuses, uploadedFiles } = solicitud
+  const { formData, servicioTipo, selectedTeeth, selectedZonas, toothStatuses, uploadedFiles } = solicitud
   const [productoPendiente, setProductoPendiente] = useState('')
   const [odontoEditMode, setOdontoEditMode] = useState(false)
   const [clientes, setClientes] = useState<any[]>([])
+  const [clienteSeleccionado, setClienteSeleccionado] = useState<any>(null)
   const [productos, setProductos] = useState<Producto[]>([])
   const uniqueId = useId()
   const stableIdPrefix = `${idPrefix}-${uniqueId}`
@@ -282,6 +284,14 @@ export function SolicitudSection({
       telefono: odontologoPrecargado.telefono ?? formData.telefono,
     })
   }, [odontologoPrecargado?.nombre, odontologoPrecargado?.email, odontologoPrecargado?.telefono])
+
+  useEffect(() => {
+    if (!odontologoPrecargado?.nombre) return
+    const c = clientes.find((cl) => (cl.nombre || cl.clinica || cl.email) === odontologoPrecargado.nombre)
+    if (c) {
+      setClienteSeleccionado(c)
+    }
+  }, [odontologoPrecargado?.nombre, clientes])
 
   useEffect(() => {
     const fetchClientes = async () => {
@@ -351,6 +361,16 @@ export function SolicitudSection({
       toothStatuses: next,
       selectedTeeth: selectedTeeth.filter((t) => t !== toothNumber),
     })
+  }
+
+  const handleZonaSelect = (zona: number) => {
+    onUpdate({
+      selectedZonas: selectedZonas.includes(zona) ? selectedZonas : [...selectedZonas, zona],
+    })
+  }
+
+  const handleZonaClear = () => {
+    onUpdate({ selectedZonas: [] })
   }
 
   const selectedTeethDisplay = useMemo(() => {
@@ -449,21 +469,25 @@ export function SolicitudSection({
 
     const uploaded: UploadedFile[] = []
     for (const file of validFiles) {
-      const ext = file.name.split('.').pop() || ''
-      const storagePath = `public/${Date.now()}_${Math.random().toString(36).slice(2, 9)}.${ext}`
-      const { error: uploadError } = await supabase.storage
-        .from('solicitudes-documentos')
-        .upload(storagePath, file)
-
-      if (!uploadError) {
-        const { data: { publicUrl } } = supabase.storage
+      try {
+        const ext = file.name.split('.').pop() || ''
+        const storagePath = `public/${Date.now()}_${Math.random().toString(36).slice(2, 9)}.${ext}`
+        const { error: uploadError } = await supabase.storage
           .from('solicitudes-documentos')
-          .getPublicUrl(storagePath)
-        uploaded.push({
-          name: file.name,
-          url: publicUrl,
-          size: file.size,
-        })
+          .upload(storagePath, file)
+
+        if (!uploadError) {
+          const { data: { publicUrl } } = supabase.storage
+            .from('solicitudes-documentos')
+            .getPublicUrl(storagePath)
+          uploaded.push({
+            name: file.name,
+            url: publicUrl,
+            size: file.size,
+          })
+        }
+      } catch {
+        // ignore
       }
     }
 
@@ -486,137 +510,183 @@ export function SolicitudSection({
       )}
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <Card>
-          <CardHeader className="pb-4">
-            <CardTitle className="text-base">Información básica</CardTitle>
-          </CardHeader>
-          <CardContent className="grid gap-4">
-            <div className="grid gap-1.5">
-              <label className="text-sm font-medium text-primary">Odontólogo / Clínica</label>
-              {odontologoPrecargado ? (
-                <Input value={odontologoPrecargado.nombre || ''} disabled />
-              ) : clientes.length > 0 ? (
-                <>
-                   <select
-                     value={formData.odontologo ? formData.odontologo : '__select__'}
-                     onChange={(e) => {
-                       const value = e.target.value
-                       if (value === '__custom__') {
-                         setOdontoEditMode(true)
-                         onFormDataChange({ odontologo: '' })
+      <Card>
+        <CardHeader className="pb-4">
+          <CardTitle className="text-base">Prescripción</CardTitle>
+        </CardHeader>
+        <CardContent className="grid gap-4">
+          <div className="grid gap-1.5">
+            <label className="text-sm font-medium text-primary">ODONTÓLOGO(A):</label>
+            {odontologoPrecargado ? (
+              <Input value={odontologoPrecargado.nombre || ''} disabled />
+            ) : clientes.length > 0 ? (
+              <>
+                 <select
+                   value={formData.odontologo ? formData.odontologo : '__select__'}
+                   onChange={(e) => {
+                     const value = e.target.value
+                     if (value === '__custom__') {
+                       setOdontoEditMode(true)
+                       setClienteSeleccionado(null)
+                       onFormDataChange({ odontologo: '' })
+                     } else {
+                       const c = clientes.find((cl) => (cl.nombre || cl.clinica || cl.email || '') === value)
+                       if (c) {
+                         setClienteSeleccionado(c)
+                         setOdontoEditMode(false)
+                         onFormDataChange({
+                           odontologo: value,
+                           correo: c.email || formData.correo,
+                           telefono: c.telefono || formData.telefono,
+                         })
                        } else {
-                         const clienteSeleccionado = clientes.find(
-                           (c) => (c.nombre || c.clinica || c.email || '') === value
-                         )
-                         if (clienteSeleccionado) {
-                           onFormDataChange({
-                             odontologo: value,
-                             correo: clienteSeleccionado.email || '',
-                             telefono: clienteSeleccionado.telefono || '',
-                             direccion: clienteSeleccionado.calle
-                               ? `${clienteSeleccionado.calle}${clienteSeleccionado.localidad ? `, ${clienteSeleccionado.localidad}` : ''}`
-                               : '',
-                           })
-                         } else {
-                           onFormDataChange({ odontologo: value })
-                         }
+                         setClienteSeleccionado(null)
+                         setOdontoEditMode(false)
+                         onFormDataChange({ odontologo: value })
                        }
-                     }}
-                     className="h-10 w-full rounded-lg border border-border bg-card px-3.5 text-sm text-foreground outline-none transition-colors focus:border-accent focus:ring-2 focus:ring-accent/30"
-                   >
-                    <option value="__select__">Seleccionar odontólogo o clínica...</option>
-                    {clientes.map((c) => (
-                      <option key={c.id} value={c.nombre || c.clinica || c.email || ''}>
-                        {c.nombre || c.clinica || c.email || 'Sin nombre'}
-                      </option>
-                    ))}
-                    <option value="__custom__">Otro (especificar)</option>
-                  </select>
-                  {odontoEditMode && (
-                    <Input
-                      className="mt-2"
-                      value={formData.odontologo}
-                      onChange={(e) => onFormDataChange({ odontologo: e.target.value })}
-                      placeholder="Nombre del odontólogo o clínica"
-                    />
-                  )}
-                </>
-              ) : (
-                <Input
-                  value={formData.odontologo}
-                  onChange={(e) => onFormDataChange({ odontologo: e.target.value })}
-                  placeholder="Nombre del odontólogo o clínica"
-                />
-              )}
-            </div>
-            <div className="grid gap-1.5">
-              <label className="text-sm font-medium text-primary">Registro médico</label>
+                     }
+                   }}
+                   className="h-10 w-full rounded-lg border border-border bg-card px-3.5 text-sm text-foreground outline-none transition-colors focus:border-accent focus:ring-2 focus:ring-accent/30"
+                 >
+                  <option value="__select__">Seleccionar dirección</option>
+                  {clientes.map((c) => (
+                    <option key={c.id} value={c.nombre || c.clinica || c.email || ''}>
+                      {c.nombre || c.clinica || c.email || 'Sin nombre'}
+                    </option>
+                  ))}
+                  <option value="__custom__">Otro (especificar)</option>
+                </select>
+                {odontoEditMode && (
+                  <Input
+                    className="mt-2"
+                    value={formData.odontologo}
+                    onChange={(e) => onFormDataChange({ odontologo: e.target.value })}
+                    placeholder="Nombre del odontólogo(a)"
+                  />
+                )}
+              </>
+            ) : (
               <Input
-                value={formData.registroMedico}
-                onChange={(e) => onFormDataChange({ registroMedico: e.target.value })}
-                placeholder="Número de registro"
+                value={formData.odontologo}
+                onChange={(e) => onFormDataChange({ odontologo: e.target.value })}
+                placeholder="Nombre del odontólogo(a)"
               />
-            </div>
-            <div className="grid gap-1.5">
-              <label className="text-sm font-medium text-primary">Correo</label>
-              <Input
-                type="email"
-                value={formData.correo}
-                onChange={(e) => onFormDataChange({ correo: e.target.value })}
-                placeholder="correo@ejemplo.com"
-              />
-            </div>
-            <div className="grid gap-1.5">
-              <label className="text-sm font-medium text-primary">Teléfono</label>
-              <Input
-                type="tel"
-                value={formData.telefono}
-                onChange={(e) => onFormDataChange({ telefono: e.target.value })}
-                placeholder="Número de contacto"
-              />
-            </div>
-            <div className="grid gap-1.5">
-              <label className="text-sm font-medium text-primary">Paciente</label>
-              <Input
-                value={formData.paciente}
-                onChange={(e) => onFormDataChange({ paciente: e.target.value })}
-                placeholder="Nombre del paciente"
-              />
-            </div>
-            <div className="grid gap-1.5">
-              <label className="text-sm font-medium text-primary">CC. Paciente</label>
-              <Input
-                value={formData.ccPaciente}
-                onChange={(e) => onFormDataChange({ ccPaciente: e.target.value })}
-                placeholder="Documento de identidad"
-              />
-            </div>
-            <div className="grid gap-1.5">
-              <label className="text-sm font-medium text-primary">Dirección</label>
+            )}
+          </div>
+          <div className="grid gap-1.5">
+            <label className="text-sm font-medium text-primary">CORREO:</label>
+            <Input
+              type="email"
+              value={formData.correo}
+              onChange={(e) => onFormDataChange({ correo: e.target.value })}
+              placeholder="correo@ejemplo.com"
+            />
+          </div>
+          <div className="grid gap-1.5">
+            <label className="text-sm font-medium text-primary">DIRECCIÓN:</label>
+            {clienteSeleccionado ? (
+              <>
+                <select
+                  value={formData.direccion || '__select__'}
+                  onChange={(e) => {
+                    const value = e.target.value
+                    if (value === '__custom__') {
+                      onFormDataChange({ direccion: '' })
+                    } else {
+                      onFormDataChange({ direccion: value })
+                    }
+                  }}
+                  className="h-10 w-full rounded-lg border border-border bg-card px-3.5 text-sm text-foreground outline-none transition-colors focus:border-accent focus:ring-2 focus:ring-accent/30"
+                >
+                  <option value="__select__">Seleccionar dirección</option>
+                  {(() => {
+                    const c = clienteSeleccionado
+                    const opts = new Set<string>()
+                    if (c.clinica && c.calle) {
+                      opts.add(`${c.clinica} - ${c.calle}`)
+                    }
+                    if (c.locacion_extra && c.direccion_extra) {
+                      opts.add(`${c.locacion_extra} - ${c.direccion_extra}`)
+                    }
+                    return Array.from(opts)
+                      .filter(Boolean)
+                      .map((opt, idx) => (
+                        <option key={idx} value={opt}>
+                          {opt}
+                        </option>
+                      ))
+                  })()}
+                  <option value="__custom__">Otra dirección (especificar)</option>
+                </select>
+                {formData.direccion === '' && (
+                  <Input
+                    className="mt-2"
+                    value={formData.direccion}
+                    onChange={(e) => onFormDataChange({ direccion: e.target.value })}
+                    placeholder="Especificar dirección"
+                  />
+                )}
+              </>
+            ) : (
               <Input
                 value={formData.direccion}
                 onChange={(e) => onFormDataChange({ direccion: e.target.value })}
-                placeholder="Dirección del paciente"
+                placeholder="Dirección"
               />
-            </div>
-            <div className="grid gap-1.5">
-              <label className="text-sm font-medium text-primary">Historia clínica del paciente</label>
-              <Textarea
-                value={formData.historiaClinica}
-                onChange={(e) => onFormDataChange({ historiaClinica: e.target.value })}
-                placeholder="Historia clínica relevante..."
-                className="min-h-[60px]"
-              />
-            </div>
-            <div className="grid gap-1.5">
-              <label className="text-sm font-medium text-primary">Firma del odontólogo</label>
-              <SignatureCanvas
-                value={formData.firma}
-                onChange={(dataUrl) => onFormDataChange({ firma: dataUrl })}
-              />
-            </div>
-          </CardContent>
-        </Card>
+            )}
+          </div>
+          <div className="grid gap-1.5">
+            <label className="text-sm font-medium text-primary">PACIENTE:</label>
+            <Input
+              value={formData.paciente}
+              onChange={(e) => onFormDataChange({ paciente: e.target.value })}
+              placeholder="Nombre del paciente"
+            />
+          </div>
+          <div className="grid gap-1.5">
+            <label className="text-sm font-medium text-primary">HISTORIA CLÍNICA DEL PACIENTE:</label>
+            <Textarea
+              value={formData.historiaClinica}
+              onChange={(e) => onFormDataChange({ historiaClinica: e.target.value })}
+              placeholder="Historia clínica del paciente ..."
+              className="min-h-[60px]"
+            />
+          </div>
+          <div className="grid gap-1.5">
+            <label className="text-sm font-medium text-primary">REGISTRO MÉDICO:</label>
+            <Input
+              value={formData.registroMedico}
+              onChange={(e) => onFormDataChange({ registroMedico: e.target.value })}
+              placeholder="Registro médico"
+            />
+          </div>
+          <div className="grid gap-1.5">
+            <label className="text-sm font-medium text-primary">TELÉFONO:</label>
+            <Input
+              type="tel"
+              value={formData.telefono}
+              onChange={(e) => onFormDataChange({ telefono: e.target.value })}
+              placeholder="Teléfono"
+            />
+          </div>
+          <div className="grid gap-1.5">
+            <label className="text-sm font-medium text-primary">CC .:</label>
+            <Input
+              value={formData.ccPaciente}
+              onChange={(e) => onFormDataChange({ ccPaciente: e.target.value })}
+              placeholder="CC."
+            />
+          </div>
+          <div className="grid gap-1.5">
+            <label className="text-sm font-medium text-primary">FIRMA DE ODONTÓLOGO (A):</label>
+            <div className="text-xs text-muted-foreground">Dibuja tu firma aquí</div>
+            <SignatureCanvas
+              value={formData.firma}
+              onChange={(dataUrl) => onFormDataChange({ firma: dataUrl })}
+            />
+          </div>
+        </CardContent>
+      </Card>
 
         <Card>
           <CardHeader className="pb-4">
@@ -695,17 +765,50 @@ export function SolicitudSection({
 
       <Card>
         <CardHeader className="pb-4">
-          <CardTitle className="text-base">Tipo de trabajo</CardTitle>
+          <CardTitle className="text-base">TIPO DE IMPRESIÓN</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="flex items-center gap-2">
+              <input
+                type="radio"
+                id={`${stableIdPrefix}-impresion-analogica`}
+                name={`${stableIdPrefix}-impresion`}
+                value="Analógica"
+                checked={formData.impresionTipo === 'Analógica'}
+                onChange={(e) => onFormDataChange({ impresionTipo: e.target.value })}
+                className="h-4 w-4"
+              />
+              <label htmlFor={`${stableIdPrefix}-impresion-analogica`} className="text-sm cursor-pointer">Analógica</label>
+            </div>
+            <div className="flex items-center gap-2">
+              <input
+                type="radio"
+                id={`${stableIdPrefix}-impresion-intraoral`}
+                name={`${stableIdPrefix}-impresion`}
+                value="Intraoral"
+                checked={formData.impresionTipo === 'Intraoral'}
+                onChange={(e) => onFormDataChange({ impresionTipo: e.target.value })}
+                className="h-4 w-4"
+              />
+              <label htmlFor={`${stableIdPrefix}-impresion-intraoral`} className="text-sm cursor-pointer">Intraoral</label>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader className="pb-4">
+          <CardTitle className="text-base">AGREGAR PRODUCTO"</CardTitle>
         </CardHeader>
         <CardContent className="grid gap-4">
           <div className="grid gap-1.5">
-            <label className="text-sm font-medium text-primary">Servicio principal</label>
+            <label className="text-sm font-medium text-primary">Seleccione el tipo de trabajo</label>
             <select
               value={servicioTipo}
               onChange={handleServicioTipoChange}
               className="h-10 w-full rounded-lg border border-border bg-card px-3.5 text-sm text-foreground outline-none transition-colors focus:border-accent focus:ring-2 focus:ring-accent/30"
             >
-              <option value="">Seleccionar tipo de trabajo...</option>
+              <option value="">Selecciona el tipo de trabajo</option>
               {TIPOS_TRABAJO_PRINCIPAL.map((tipo) => (
                 <option key={tipo} value={tipo}>
                   {tipo}
@@ -841,7 +944,7 @@ export function SolicitudSection({
         </CardHeader>
         <CardContent>
           <div className="grid gap-6 lg:grid-cols-2">
-            <div>
+            <div className="flex flex-col items-center gap-6">
               <DentalChart
                 selectedTeeth={selectedTeeth}
                 toothStatuses={toothStatuses || {}}
@@ -849,9 +952,18 @@ export function SolicitudSection({
                 onToothStatusChange={handleToothStatusChange}
                 onToothStatusClear={handleToothStatusClear}
               />
-              <div className="mt-3 text-xs text-muted-foreground">
+              <div className="text-xs text-muted-foreground text-center">
                 <span className="font-semibold text-foreground">Seleccionaste: </span>
                 {selectedTeethDisplay}
+              </div>
+              <ZonaDentalChart
+                selectedZonas={selectedZonas || []}
+                onZonaSelect={handleZonaSelect}
+                onClear={handleZonaClear}
+              />
+              <div className="text-xs text-muted-foreground text-center">
+                <span className="font-semibold text-foreground">Zonas: </span>
+                {(selectedZonas || []).length === 0 ? 'Ninguna' : (selectedZonas || []).sort((a, b) => a - b).join(', ')}
               </div>
             </div>
             <div className="space-y-4">

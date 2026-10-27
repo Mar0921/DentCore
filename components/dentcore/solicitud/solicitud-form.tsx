@@ -58,6 +58,7 @@ export function SolicitudForm() {
             return {
               ...s,
               selectedTeeth: Array.isArray(s.selectedTeeth) ? s.selectedTeeth : [],
+              selectedZonas: Array.isArray(s.selectedZonas) ? s.selectedZonas : [],
               toothStatuses: typeof s.toothStatuses === 'object' && s.toothStatuses !== null ? s.toothStatuses : {},
               uploadedFiles: Array.isArray(s.uploadedFiles) ? s.uploadedFiles : [],
               formData: {
@@ -142,9 +143,18 @@ export function SolicitudForm() {
   const validate = (): string | null => {
     for (let i = 0; i < solicitudes.length; i++) {
       const s = solicitudes[i]
+      const f = s.formData
       if (!s.servicioTipo) return `La solicitud #${i + 1} requiere seleccionar el tipo de servicio.`
-      if (!s.formData.fechaEntrega.dia || !s.formData.fechaEntrega.mes || !s.formData.fechaEntrega.anio) {
+      if (!f.direccion) return `La solicitud #${i + 1} requiere la dirección.`
+      if (!f.impresionTipo) return `La solicitud #${i + 1} requiere el tipo de impresión.`
+      if (!f.fechaElaboracion.dia || !f.fechaElaboracion.mes || !f.fechaElaboracion.anio) {
+        return `La solicitud #${i + 1} requiere la fecha de elaboración.`
+      }
+      if (!f.fechaEntrega.dia || !f.fechaEntrega.mes || !f.fechaEntrega.anio) {
         return `La solicitud #${i + 1} requiere la fecha de entrega.`
+      }
+      if (s.uploadedFiles.length === 0) {
+        return `La solicitud #${i + 1} requiere al menos un documento adjunto.`
       }
     }
     return null
@@ -178,6 +188,7 @@ export function SolicitudForm() {
           ? formData.productos.map(p => `${p.producto} x${p.unidades} (${p.dientes || 'sin dientes'}) a $${p.precioUnitario.toFixed(2)}`).join('; ')
           : ''
         const dientes_str = s.selectedTeeth.length > 0 ? s.selectedTeeth.join(', ') : ''
+        const zonas_str = s.selectedZonas && s.selectedZonas.length > 0 ? s.selectedZonas.sort((a, b) => a - b).join(', ') : ''
         const notas = [
           formData.registroMedico ? ` registroMedico: ${formData.registroMedico}` : '',
           formData.historiaClinica ? ` historiaClinica: ${formData.historiaClinica}` : '',
@@ -188,12 +199,10 @@ export function SolicitudForm() {
           formData.dientesTrabajo ? ` dientesTrabajo: ${formData.dientesTrabajo}` : '',
           formData.codigoTrazabilidad ? ` codigo: ${formData.codigoTrazabilidad}` : '',
           productos_str ? ` productos: ${productos_str}` : '',
+          zonas_str ? ` zonas: ${zonas_str}` : '',
           formData.piezasEnviadas.length > 0 ? ` piezasEnviadas: ${formData.piezasEnviadas.join(', ')}` : '',
         ].filter(Boolean).join('\n')
-        const res = await fetch('/api/solicitudes', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
+        const payload = {
             laboratorio_id,
             odontologo_id,
             odontologonombre: formData.odontologo || null,
@@ -201,8 +210,11 @@ export function SolicitudForm() {
             odontologo_telefono: formData.telefono || null,
             paciente: formData.paciente || null,
             cc_paciente: formData.ccPaciente || null,
+            direccion: formData.direccion || null,
             fecha_entrega: formatFecha(formData.fechaEntrega) || null,
+            fecha_elaboracion: formatFecha(formData.fechaElaboracion) || null,
             firma_odontologo: formData.firma || null,
+            impresion_tipo: formData.impresionTipo || null,
             tipo: servicioTipo || formData.servicio || 'TEST',
             estado: 'pendiente',
             prioridad: 'media',
@@ -210,7 +222,23 @@ export function SolicitudForm() {
             asignado_a: null,
             notas: notas || null,
             dientes: dientes_str || null,
-          }),
+            zonas: zonas_str || null,
+            registro_medico: formData.registroMedico || null,
+            historia_clinica: formData.historiaClinica || null,
+            indicaciones: formData.indicaciones || null,
+            color: formData.color || null,
+            guia: formData.guia || null,
+            codigo_trazabilidad: formData.codigoTrazabilidad || null,
+            productos: productos_str || null,
+            piezas_enviadas: formData.piezasEnviadas.length > 0 ? formData.piezasEnviadas.join(', ') : null,
+            archivos: s.uploadedFiles.length > 0 ? s.uploadedFiles.map(f => f.url) : null,
+            documentos_solicitud: s.uploadedFiles.length > 0 ? s.uploadedFiles.map(f => f.name).join(', ') : null,
+          }
+        console.log('PAYLOAD ENVIADO:', payload)
+        const res = await fetch('/api/solicitudes', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
         })
         const result = await res.json()
         if (!res.ok) {

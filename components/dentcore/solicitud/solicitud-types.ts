@@ -27,6 +27,7 @@ export interface SolicitudFormData {
   productos: ProductoLinea[]
   piezasEnviadas: string[]
   archivosAdjuntos: UploadedFile[]
+  impresionTipo: string
 }
 
 export interface ProductoLinea {
@@ -42,6 +43,7 @@ export interface SolicitudEntry {
   formData: SolicitudFormData
   servicioTipo: string
   selectedTeeth: number[]
+  selectedZonas: number[]
   toothStatuses: Record<number, ToothStatus>
   uploadedFiles: UploadedFile[]
   archivoAdjunto: UploadedFile | null
@@ -58,6 +60,7 @@ export function createDefaultSolicitud(overrides?: Partial<SolicitudEntry>): Sol
     id: '',
     servicioTipo: '',
     selectedTeeth: [],
+    selectedZonas: [],
     toothStatuses: {},
     uploadedFiles: [],
     archivoAdjunto: null,
@@ -88,6 +91,7 @@ export function createDefaultSolicitud(overrides?: Partial<SolicitudEntry>): Sol
       productos: [],
       piezasEnviadas: [],
       archivosAdjuntos: [],
+      impresionTipo: '',
     },
     ...overrides,
   }

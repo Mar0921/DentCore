@@ -15,6 +15,8 @@ export function RegistroClientePageClient() {
     calle: "",
     localidad: "",
     clinica: "",
+    locacion_extra: "",
+    direccion_extra: "",
     password: "",
     confirmPassword: "",
   })
@@ -59,6 +61,8 @@ export function RegistroClientePageClient() {
         calle: formData.calle,
         localidad: formData.localidad,
         clinica: formData.clinica,
+        locacion_extra: formData.locacion_extra,
+        direccion_extra: formData.direccion_extra,
         laboratorio_id: labs[0].id,
         password: formData.password,
         tiene_acceso: true,
@@ -158,7 +162,23 @@ export function RegistroClientePageClient() {
                 placeholder="Nombre de la clínica"
               />
             </div>
+                <div>
+              <label className="text-sm font-medium">Locacion Extra</label>
+              <Input
+                value={formData.locacion_extra}
+                onChange={(e) => setFormData({ ...formData, locacion_extra: e.target.value })}
+                placeholder="Locacion extra"
+              />
+            </div>
             <div>
+              <label className="text-sm font-medium">Direccion Extra</label>
+              <Input
+                value={formData.direccion_extra}
+                onChange={(e) => setFormData({ ...formData, direccion_extra: e.target.value })}
+                placeholder="Direccion extra"
+              />
+            </div>
+        <div>
               <label className="text-sm font-medium">Contraseña</label>
               <Input
                 type="password"

@@ -16,6 +16,8 @@ export function InvitadoLaboratorioPageClient() {
     email: "",
     telefono: "",
     clinica: "",
+    locacion_extra: "",
+    direccion_extra: "",
   })
   const [solicitudes, setSolicitudes] = useState<any[]>([])
   const [selectedSolicitud, setSelectedSolicitud] = useState<any>(null)
@@ -155,6 +157,20 @@ export function InvitadoLaboratorioPageClient() {
                       onChange={(e) => setFormData({ ...formData, clinica: e.target.value })}
                     />
                   </div>
+                  <div>
+                    <label className="text-sm font-medium">Locacion Extra</label>
+                    <Input
+                      value={formData.locacion_extra ?? ""}
+                      onChange={(e) => setFormData({ ...formData, locacion_extra: e.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium">Direccion Extra</label>
+                    <Input
+                      value={formData.direccion_extra ?? ""}
+                      onChange={(e) => setFormData({ ...formData, direccion_extra: e.target.value })}
+                    />
+                  </div>
                   <div className="flex gap-2">
                     <Button onClick={handleSave} className="gap-2">
                       <Save className="size-4" />
@@ -189,6 +205,12 @@ export function InvitadoLaboratorioPageClient() {
                     <div className="flex items-center gap-2">
                       <Building2 className="size-4 text-muted-foreground" />
                       <span className="text-sm">{invitado?.clinica || "—"}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm">Locacion Extra: {invitado?.locacion_extra || "—"}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm">Direccion Extra: {invitado?.direccion_extra || "—"}</span>
                     </div>
                   </div>
                   <Button variant="outline" className="w-full gap-2" onClick={() => setEditing(true)}>

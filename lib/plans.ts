@@ -17,13 +17,12 @@ export const plans: Plan[] = [
     id: 'starter',
     name: 'Starter',
     desc: 'Para laboratorios pequeños.',
-    monthly: 29,
-    yearly: 290,
+    monthly: 260000,
+    yearly: 2600000,
     features: [
-      'Hasta 3 usuarios',
+      'Gestión del laboratorio',
       'Gestión de solicitudes',
       'Clientes',
-      'Facturación básica',
       'Soporte por correo',
     ],
     cta: 'Comenzar gratis',
@@ -33,13 +32,13 @@ export const plans: Plan[] = [
     id: 'professional',
     name: 'Professional',
     desc: 'El plan más recomendado.',
-    monthly: 79,
-    yearly: 790,
+    monthly: 320000,
+    yearly: 3200000,
     features: [
-      'Usuarios ilimitados',
+      'Gestión del laboratorio',
       'Inventario',
       'Reportes',
-      'Facturación completa',
+      'Facturación',
       'Notificaciones',
       'Chat interno',
     ],
@@ -49,7 +48,7 @@ export const plans: Plan[] = [
   {
     id: 'enterprise',
     name: 'Enterprise',
-    desc: 'Para múltiples sedes o altos volúmenes.',
+    desc: 'Para múltiples sedes o altos volúmenes. Nos contactaremos contigo y elaboraremos una solución perfecta para tu laboratorio.',
     monthly: null,
     yearly: null,
     priceLabel: 'A medida',
@@ -70,5 +69,5 @@ export function getPlan(id: string | null | undefined): Plan | undefined {
 }
 
 export function formatPrice(value: number): string {
-  return `$${value.toLocaleString('en-US')}`
+  return `$${value.toLocaleString('es-CO')}`
 }

@@ -42,6 +42,13 @@ import {
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { LabHeader } from '@/components/dentcore/lab-header'
+import { SupportForm } from '@/components/dentcore/support-form'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 
 const mainNavItems = [
   { label: 'Trabajos', href: '/trabajos', active: false },
@@ -74,6 +81,7 @@ interface LaboratorioLayoutProps {
 
 export function LaboratorioLayout({ children }: LaboratorioLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(true)
+  const [supportOpen, setSupportOpen] = useState(false)
 
   return (
     <div className="min-h-screen bg-background">
@@ -94,12 +102,35 @@ export function LaboratorioLayout({ children }: LaboratorioLayoutProps) {
             <Button variant="ghost" size="icon" className="size-9">
               <MessageCircle className="size-4" />
             </Button>
-            <Button variant="ghost" className="gap-1.5 text-xs">
-              <Headphones className="size-4" />
-              Soporte
-              <ChevronDown className="size-3" />
-            </Button>
-            <LabHeader />
+            <DropdownMenu>
+            <DropdownMenuTrigger>
+              <Button variant="ghost" className="gap-1.5 text-xs" onClick={() => setSupportOpen(true)}>
+                <Headphones className="size-4" />
+                Soporte
+                <ChevronDown className="size-3" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => setSupportOpen(true)}>
+                <MessageSquare className="size-4 mr-2" />
+                Consultas
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setSupportOpen(true)}>
+                <AlertTriangle className="size-4 mr-2" />
+                Soporte técnico
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setSupportOpen(true)}>
+                <AlertTriangle className="size-4 mr-2" />
+                Reportar error
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setSupportOpen(true)}>
+                <MessageSquare className="size-4 mr-2" />
+                Sugerencia
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <SupportForm open={supportOpen} onOpenChange={setSupportOpen} />
+          <LabHeader />
             <Button variant="ghost" size="icon" className="size-9">
               <span className="text-xs font-bold">?</span>
             </Button>

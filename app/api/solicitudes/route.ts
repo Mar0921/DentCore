@@ -19,6 +19,9 @@ const EMPLEADO_SAFE_COLUMNS = [
   'dientes',
   'paciente',
   'cc_paciente',
+  'direccion',
+  'impresion_tipo',
+  'fecha_elaboracion',
   'fecha_entrega',
   'firma_odontologo',
   'fase_id',
@@ -65,6 +68,7 @@ function stripPriceFields(data: any): any {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
+    console.log('BODY RECIBIDO EN SERVIDOR (POST):', body)
     const {
       laboratorio_id = null,
       odontologo_id = null,

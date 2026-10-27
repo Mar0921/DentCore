@@ -44,10 +44,12 @@ import {
   AlertTriangle,
   MessageCircleQuestion,
   FolderOpen,
+  AlertCircle,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
-import { supabase } from '@/lib/supabase'
+import { SupportForm } from '@/components/dentcore/support-form'
+import { exportPageToPDF, getPageTitle } from '@/lib/pdf-export'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -79,6 +81,7 @@ const invitadoNavItems = [
   { label: 'Solicitudes', href: '/invitado-laboratorio/solicitudes', active: false },
   { label: 'Productos', href: '/invitado-laboratorio/productos', active: false },
   { label: 'Estado de cuenta', href: '/invitado-laboratorio/estado-de-cuenta', active: false },
+  { label: 'Carta Convenio', href: '/invitado-laboratorio/carta-convenio', active: false },
 ]
 
 const sidebarItems = [
@@ -120,38 +123,50 @@ interface AppShellProps {
 
 export function AppShell({ children, sidebar = 'trabajos', showSidebar = true }: AppShellProps) {
   const [sidebarOpen, setSidebarOpen] = useState(true)
-  const [labName, setLabName] = useState<string>("Laboratorio Dental Arte Cerámico")
-  const [userEmail, setUserEmail] = useState<string>("mar0921p@gmail.com")
+  const [labName, setLabName] = useState<string>("")
+  const [userName, setUserName] = useState<string>("")
+  const [userEmail, setUserEmail] = useState<string>("")
   const [invitadoNombre, setInvitadoNombre] = useState<string>('')
   const [invitadoEmail, setInvitadoEmail] = useState<string>('')
+  const [supportOpen, setSupportOpen] = useState(false)
   const pathname = usePathname()
   const router = useRouter()
+  const [isExporting, setIsExporting] = useState(false)
+
+  async function handleExportPDF() {
+    setIsExporting(true)
+    try {
+      const title = getPageTitle()
+      await exportPageToPDF(title)
+    } catch (error) {
+      console.error('Error exporting PDF:', error)
+      alert('Error al generar el PDF')
+    } finally {
+      setIsExporting(false)
+    }
+  }
 
   useEffect(() => {
     loadUserInfo()
   }, [])
 
-  async function loadUserInfo() {
-    try {
+  function loadUserInfo() {
+    if (typeof window !== 'undefined') {
       if (sidebar === 'invitado') {
-        const email = typeof window !== 'undefined' ? localStorage.getItem('labUserEmail') : null
+        const email = localStorage.getItem('labUserEmail')
         if (email) {
           setInvitadoEmail(email)
-          const { data } = await supabase.from('cliente').select('nombre').eq('email', email).maybeSingle()
-          if (data) setInvitadoNombre(data.nombre || '')
+          const nombre = localStorage.getItem('labUserName')
+          if (nombre) setInvitadoNombre(nombre)
         }
       } else {
-        const { data: labs } = await supabase.from("laboratorio").select("id, nombre").limit(1)
-        if (labs && labs.length > 0) {
-          setLabName(labs[0].nombre)
-          const { data: employees } = await supabase.from("empleados").select("email").eq("laboratorio_id", labs[0].id).limit(1)
-          if (employees && employees.length > 0) {
-            setUserEmail(employees[0].email || "")
-          }
-        }
+        const storedLabName = localStorage.getItem('labName')
+        const storedUserName = localStorage.getItem('labUserName')
+        const storedUserEmail = localStorage.getItem('labUserEmail')
+        setLabName(storedLabName || "")
+        setUserName(storedUserName || "")
+        setUserEmail(storedUserEmail || "")
       }
-    } catch (err) {
-      console.error("Error:", err)
     }
   }
 
@@ -181,17 +196,35 @@ export function AppShell({ children, sidebar = 'trabajos', showSidebar = true }:
             </Button>
             <DropdownMenu>
               <DropdownMenuTrigger>
-                <Button variant="ghost" className="gap-1.5 text-xs">
+                <Button variant="ghost" className="gap-1.5 text-xs" onClick={() => setSupportOpen(true)}>
                   <Headphones className="size-4" />
                   Soporte
                   <ChevronDown className="size-3" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                <DropdownMenuItem>Consultas</DropdownMenuItem>
-                <DropdownMenuItem>Permitir acceso</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setSupportOpen(true)}>
+                  <MessageSquare className="size-4 mr-2" />
+                  Consultas
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setSupportOpen(true)}>
+                  <AlertCircle className="size-4 mr-2" />
+                  Soporte técnico
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setSupportOpen(true)}>
+                  <AlertCircle className="size-4 mr-2" />
+                  Reportar error
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setSupportOpen(true)}>
+                  <MessageSquare className="size-4 mr-2" />
+                  Sugerencia
+                </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
+            <SupportForm open={supportOpen} onOpenChange={setSupportOpen} />
+            <Button variant="ghost" size="icon" className="size-9" onClick={handleExportPDF} title="Exportar a PDF" disabled={isExporting}>
+              <Printer className="size-4" />
+            </Button>
             {sidebar === 'invitado' ? (
               <Button variant="ghost" className="gap-1.5 text-xs">
                 <User className="size-4" />
@@ -202,13 +235,18 @@ export function AppShell({ children, sidebar = 'trabajos', showSidebar = true }:
               <>
                 <Button variant="ghost" className="gap-1.5 text-xs">
                   <FlaskConical className="size-4" />
-                  {labName}
+                  {labName || "Cargando..."}
+                  <ChevronDown className="size-3" />
+                </Button>
+                <Button variant="ghost" className="gap-1.5 text-xs">
+                  <User className="size-3" />
+                  {userName || "Cargando..."}
                   <ChevronDown className="size-3" />
                 </Button>
                 <DropdownMenu>
                   <DropdownMenuTrigger>
                     <Button variant="ghost" className="gap-1.5 text-xs">
-                      {userEmail}
+                      {userEmail || "Cargando..."}
                       <ChevronDown className="size-3" />
                     </Button>
                   </DropdownMenuTrigger>
@@ -264,7 +302,7 @@ export function AppShell({ children, sidebar = 'trabajos', showSidebar = true }:
             <Button variant="ghost" size="icon" className="size-8" onClick={() => router.push('/iniciar-sesion')}>
               <LogOut className="size-4" />
             </Button>
-            <Button variant="ghost" size="icon" className="size-8">
+            <Button variant="ghost" size="icon" className="size-8" onClick={handleExportPDF} title="Exportar a PDF" disabled={isExporting}>
               <Printer className="size-4" />
             </Button>
             <Button variant="ghost" size="icon" className="size-8">

@@ -8,8 +8,9 @@ import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/componen
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { DentalChart } from '@/components/dentcore/solicitud/dental-chart'
-import { ChevronLeft, Save, RefreshCw, Upload } from 'lucide-react'
+import { ChevronLeft, Save, RefreshCw, Upload, FileText, Download } from 'lucide-react'
 import type { ToothStatus } from '@/components/dentcore/solicitud/solicitud-types'
+import { exportPageToPDF, getPageTitle } from '@/lib/pdf-export'
 
 const GARANTIA_VIEWER_URL = (solicitudId: string) => `/api/garantia?solicitud_id=${encodeURIComponent(solicitudId)}`
 
@@ -397,13 +398,14 @@ export default function SolicitudDetallePage() {
       <Header
         backOnClick={() => router.back()}
         title="Detalle de solicitud"
-        subtitle={`#${solicitud.id}`}
+        subtitle={solicitud.codigo_trazabilidad ? `Código: ${solicitud.codigo_trazabilidad}` : `#${solicitud.id}`}
         badges={{
           estado: estadoOpt?.label || form.estado || '',
           prioridad: prioridadOpt?.label || form.prioridad || '',
         }}
         isEditing={isEditing}
         onToggleEdit={() => setIsEditing((prev) => !prev)}
+        onExportPDF={() => exportPageToPDF(getPageTitle())}
       />
 
       <Card>
@@ -860,6 +862,7 @@ function Header({
   badges,
   isEditing,
   onToggleEdit,
+  onExportPDF,
 }: {
   backOnClick: () => void
   title: string
@@ -867,6 +870,7 @@ function Header({
   badges?: { estado?: string; prioridad?: string }
   isEditing?: boolean
   onToggleEdit?: () => void
+  onExportPDF?: () => void
 }) {
   return (
     <div className="flex items-center justify-between gap-2">
@@ -894,6 +898,12 @@ function Header({
             ) : null}
           </div>
         ) : null}
+        {onExportPDF && (
+          <Button variant="outline" size="sm" className="gap-2" onClick={onExportPDF}>
+            <FileText className="size-4" />
+            Exportar PDF
+          </Button>
+        )}
         {onToggleEdit && (
           <Button variant="outline" size="sm" onClick={onToggleEdit}>
             {isEditing ? 'Cancelar edición' : 'Editar'}

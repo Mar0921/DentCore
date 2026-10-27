@@ -16,6 +16,8 @@ interface Cliente {
   nombre: string | null
   calle: string | null
   localidad: string | null
+  locacion_extra: string | null
+  direccion_extra: string | null
   telefono: string | null
   celular: string | null
   email: string | null
