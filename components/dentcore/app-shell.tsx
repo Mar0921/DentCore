@@ -29,6 +29,7 @@ import {
    UserRound,
    User,
   Package,
+  FileText,
   DollarSign,
    UserCog,
   Building2,
@@ -40,11 +41,11 @@ import {
   Settings,
   CalendarDays,
   Briefcase,
-  FileText,
   AlertTriangle,
   MessageCircleQuestion,
   FolderOpen,
   AlertCircle,
+  PenTool,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -106,13 +107,14 @@ const empleadoItems = [
 ]
 
 const laboratorioItems = [
-  { label: 'Clientes', icon: Users, href: '/laboratorio/clientes', activePrefix: '/laboratorio' },
-  { label: 'Tarifas', icon: DollarSign, href: '/laboratorio/tarifas', activePrefix: '/laboratorio' },
-  { label: 'Departamentos', icon: Building2, href: '/laboratorio/departamentos', activePrefix: '/laboratorio' },
-  { label: 'Fases', icon: GitBranch, href: '/laboratorio/fases', activePrefix: '/laboratorio' },
-  { label: 'Incidencias y calidad', icon: AlertTriangle, href: '/laboratorio/incidencias', activePrefix: '/laboratorio' },
-  { label: 'CRM', icon: MessageCircleQuestion, href: '/laboratorio/crm', activePrefix: '/laboratorio' },
-  { label: 'Archivos del laboratorio', icon: FolderOpen, href: '/laboratorio/archivos', activePrefix: '/laboratorio' },
+  { label: 'Clientes', icon: Users, href: '/laboratorio/cliente', activePrefix: '/laboratorio/cliente' },
+  { label: 'Tarifas', icon: DollarSign, href: '/laboratorio/tarifas', activePrefix: '/laboratorio/tarifas' },
+  { label: 'Departamentos', icon: Building2, href: '/laboratorio/departamentos', activePrefix: '/laboratorio/departamentos' },
+  { label: 'Fases', icon: GitBranch, href: '/laboratorio/fases', activePrefix: '/laboratorio/fases' },
+  { label: 'Incidencias y calidad', icon: AlertTriangle, href: '/laboratorio/incidencias', activePrefix: '/laboratorio/incidencias' },
+  { label: 'CRM', icon: MessageCircleQuestion, href: '/laboratorio/crm', activePrefix: '/laboratorio/crm' },
+  { label: 'Archivos del laboratorio', icon: FolderOpen, href: '/laboratorio/archivos', activePrefix: '/laboratorio/archivos' },
+  { label: 'Firmas', icon: PenTool, href: '/laboratorio/firmas', activePrefix: '/laboratorio/firmas' },
 ]
 
 interface AppShellProps {

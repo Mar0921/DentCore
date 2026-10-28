@@ -45,6 +45,9 @@ interface SolicitudLite {
   color: string | null
   guia: string | null
   codigo_trazabilidad: string | null
+  impresion_tipo: string | null
+  direccion: string | null
+  fecha_elaboracion: string | null
   productos: string | null
   piezas_enviadas: string | null
   archivos: string[] | null
@@ -443,12 +446,35 @@ export default function InvitadoSolicitudDetallePage() {
               <span className="text-sm text-foreground whitespace-pre-wrap">{solicitud.indicaciones || '—'}</span>
             </div>
             <div className="sm:col-span-2">
+              <span className="text-xs text-muted-foreground">Tipo de impresión</span>
+              <span className="text-sm text-foreground whitespace-pre-wrap">{solicitud.impresion_tipo || '—'}</span>
+            </div>
+            <div className="sm:col-span-2">
+              <span className="text-xs text-muted-foreground">Dirección</span>
+              <span className="text-sm text-foreground whitespace-pre-wrap">{solicitud.direccion || '—'}</span>
+            </div>
+            <div className="sm:col-span-2">
+              <span className="text-xs text-muted-foreground">Fecha de elaboración</span>
+              <span className="text-sm text-foreground whitespace-pre-wrap">{solicitud.fecha_elaboracion || '—'}</span>
+            </div>
+            <div className="sm:col-span-2">
               <span className="text-xs text-muted-foreground">Documentos adjuntos</span>
               {Array.isArray(solicitud.archivos) && solicitud.archivos.length > 0 ? (
                 <ul className="list-disc pl-5 text-sm text-foreground">
-                  {solicitud.archivos.map((archivo: string, idx: number) => (
-                    <li key={idx}>{archivo}</li>
-                  ))}
+                  {solicitud.archivos.map((archivo: string, idx: number) => {
+                    const [nombre, url] = archivo.includes('|') ? archivo.split('|') : [archivo, null]
+                    return (
+                      <li key={idx}>
+                        {url ? (
+                          <a href={url} target="_blank" rel="noreferrer" className="underline">
+                            {nombre || archivo}
+                          </a>
+                        ) : (
+                          <span>{nombre || archivo}</span>
+                        )}
+                      </li>
+                    )
+                  })}
                 </ul>
               ) : (
                 <span className="text-sm text-muted-foreground">Sin documentos adjuntos</span>

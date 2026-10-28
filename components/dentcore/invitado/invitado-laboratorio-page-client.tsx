@@ -5,7 +5,7 @@ import { supabase } from "@/lib/supabase"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { User, Mail, Phone, Building2, Edit, Save, X, Plus, FileText } from "lucide-react"
+import { User, Mail, Phone, Building2, Edit, Save, X, Plus, FileText, ScrollText } from "lucide-react"
 import { SolicitudDetail } from "@/components/dentcore/solicitud/solicitud-detail"
 
 export function InvitadoLaboratorioPageClient() {
@@ -216,6 +216,10 @@ export function InvitadoLaboratorioPageClient() {
                   <Button variant="outline" className="w-full gap-2" onClick={() => setEditing(true)}>
                     <Edit className="size-4" />
                     Editar perfil
+                  </Button>
+                  <Button variant="outline" className="w-full gap-2" onClick={() => window.location.href = '/invitado-laboratorio/carta-convenio'}>
+                    <ScrollText className="size-4" />
+                    Carta Convenio
                   </Button>
                 </>
               )}

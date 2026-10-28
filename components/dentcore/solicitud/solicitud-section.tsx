@@ -635,56 +635,23 @@ export function SolicitudSection({
               />
             )}
           </div>
-          <div className="grid gap-1.5">
-            <label className="text-sm font-medium text-primary">PACIENTE:</label>
-            <Input
-              value={formData.paciente}
-              onChange={(e) => onFormDataChange({ paciente: e.target.value })}
-              placeholder="Nombre del paciente"
-            />
-          </div>
-          <div className="grid gap-1.5">
-            <label className="text-sm font-medium text-primary">HISTORIA CLÍNICA DEL PACIENTE:</label>
-            <Textarea
-              value={formData.historiaClinica}
-              onChange={(e) => onFormDataChange({ historiaClinica: e.target.value })}
-              placeholder="Historia clínica del paciente ..."
-              className="min-h-[60px]"
-            />
-          </div>
-          <div className="grid gap-1.5">
-            <label className="text-sm font-medium text-primary">REGISTRO MÉDICO:</label>
-            <Input
-              value={formData.registroMedico}
-              onChange={(e) => onFormDataChange({ registroMedico: e.target.value })}
-              placeholder="Registro médico"
-            />
-          </div>
-          <div className="grid gap-1.5">
-            <label className="text-sm font-medium text-primary">TELÉFONO:</label>
-            <Input
-              type="tel"
-              value={formData.telefono}
-              onChange={(e) => onFormDataChange({ telefono: e.target.value })}
-              placeholder="Teléfono"
-            />
-          </div>
-          <div className="grid gap-1.5">
-            <label className="text-sm font-medium text-primary">CC .:</label>
-            <Input
-              value={formData.ccPaciente}
-              onChange={(e) => onFormDataChange({ ccPaciente: e.target.value })}
-              placeholder="CC."
-            />
-          </div>
-          <div className="grid gap-1.5">
-            <label className="text-sm font-medium text-primary">FIRMA DE ODONTÓLOGO (A):</label>
-            <div className="text-xs text-muted-foreground">Dibuja tu firma aquí</div>
-            <SignatureCanvas
-              value={formData.firma}
-              onChange={(dataUrl) => onFormDataChange({ firma: dataUrl })}
-            />
-          </div>
+           <div className="grid gap-1.5">
+             <label className="text-sm font-medium text-primary">PACIENTE:</label>
+             <Input
+               value={formData.paciente}
+               onChange={(e) => onFormDataChange({ paciente: e.target.value })}
+               placeholder="Nombre del paciente"
+             />
+           </div>
+           <div className="grid gap-1.5">
+             <label className="text-sm font-medium text-primary">HISTORIA CLÍNICA DEL PACIENTE:</label>
+             <Textarea
+               value={formData.historiaClinica}
+               onChange={(e) => onFormDataChange({ historiaClinica: e.target.value })}
+               placeholder="Historia clínica del paciente ..."
+               className="min-h-[60px]"
+             />
+           </div>
         </CardContent>
       </Card>
 
@@ -759,7 +726,40 @@ export function SolicitudSection({
                 placeholder="Código automático"
               />
             </div>
-          </CardContent>
+            <div className="grid gap-1.5">
+             <label className="text-sm font-medium text-primary">REGISTRO MÉDICO:</label>
+             <Input
+               value={formData.registroMedico}
+               onChange={(e) => onFormDataChange({ registroMedico: e.target.value })}
+               placeholder="Registro médico"
+             />
+           </div>
+           <div className="grid gap-1.5">
+             <label className="text-sm font-medium text-primary">TELÉFONO:</label>
+             <Input
+               type="tel"
+               value={formData.telefono}
+               onChange={(e) => onFormDataChange({ telefono: e.target.value })}
+               placeholder="Teléfono"
+             />
+           </div>
+           <div className="grid gap-1.5">
+             <label className="text-sm font-medium text-primary">CC .:</label>
+             <Input
+               value={formData.ccPaciente}
+               onChange={(e) => onFormDataChange({ ccPaciente: e.target.value })}
+               placeholder="CC."
+             />
+           </div>
+           <div className="grid gap-1.5">
+             <label className="text-sm font-medium text-primary">FIRMA DE ODONTÓLOGO (A):</label>
+             <div className="text-xs text-muted-foreground">Dibuja tu firma aquí</div>
+             <SignatureCanvas
+               value={formData.firma}
+               onChange={(dataUrl) => onFormDataChange({ firma: dataUrl })}
+             />
+           </div>
+         </CardContent>
         </Card>
       </div>
 
@@ -956,16 +956,38 @@ export function SolicitudSection({
                 <span className="font-semibold text-foreground">Seleccionaste: </span>
                 {selectedTeethDisplay}
               </div>
-              <ZonaDentalChart
-                selectedZonas={selectedZonas || []}
-                onZonaSelect={handleZonaSelect}
-                onClear={handleZonaClear}
-              />
-              <div className="text-xs text-muted-foreground text-center">
-                <span className="font-semibold text-foreground">Zonas: </span>
-                {(selectedZonas || []).length === 0 ? 'Ninguna' : (selectedZonas || []).sort((a, b) => a - b).join(', ')}
-              </div>
+            <div className="flex flex-col items-center gap-6">
+               <ZonaDentalChart
+                 selectedZonas={selectedZonas || []}
+                 onZonaSelect={handleZonaSelect}
+                 onClear={handleZonaClear}
+                 onSaveDrawing={async (dataUrl) => {
+                   try {
+                     const res = await fetch(dataUrl)
+                     const blob = await res.blob()
+                     const ext = 'png'
+                     const storagePath = `public/${Date.now()}_${Math.random().toString(36).slice(2, 9)}.${ext}`
+                     const { error: uploadError } = await supabase.storage
+                       .from('solicitudes-documentos')
+                       .upload(storagePath, blob)
+                     if (!uploadError) {
+                       const { data: { publicUrl } } = supabase.storage
+                         .from('solicitudes-documentos')
+                         .getPublicUrl(storagePath)
+                       const uploaded: UploadedFile = {
+                         name: `dibujo-zona-${Date.now()}.png`,
+                         url: publicUrl,
+                         size: blob.size,
+                       }
+                       onUpdate({ uploadedFiles: [...uploadedFiles, uploaded] })
+                     }
+                   } catch {
+                     // ignore
+                   }
+                 }}
+               />
             </div>
+          </div>
             <div className="space-y-4">
               <div className="grid gap-2">
                 <label className="text-sm font-medium text-primary">Guía de color</label>
@@ -1059,11 +1081,13 @@ export function SolicitudSection({
             <div className="grid gap-2">
               {uploadedFiles.map((file, fileIndex) => (
                 <div key={fileIndex} className="flex items-center justify-between rounded-lg border border-border bg-secondary/30 px-3 py-2">
-                  <div className="flex items-center gap-2">
-                    <File className="size-4 text-muted-foreground" />
-                    <span className="text-sm truncate max-w-[200px]">{file.name}</span>
-                    <span className="text-xs text-muted-foreground">({(file.size / 1024 / 1024).toFixed(2)} MB)</span>
-                  </div>
+                   <div className="flex items-center gap-2">
+                     <File className="size-4 text-muted-foreground" />
+                     <a href={file.url} target="_blank" rel="noopener noreferrer" className="text-sm truncate max-w-[200px] text-primary underline">
+                       {file.name}
+                     </a>
+                     <span className="text-xs text-muted-foreground">({(file.size / 1024 / 1024).toFixed(2)} MB)</span>
+                   </div>
                   <Button
                     type="button"
                     variant="ghost"

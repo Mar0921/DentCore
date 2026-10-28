@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { Search, Plus, Edit, Trash2, Tag, UserPlus, MoreHorizontal, Link as LinkIcon } from 'lucide-react'
+import { Search, Plus, Edit, Trash2, Tag, UserPlus, MoreHorizontal, Link as LinkIcon, FileText } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
@@ -335,6 +335,15 @@ export function ClientesTable() {
                                  onClick={() => router.push(`/laboratorio/clientes/${cliente.id}`)}
                                >
                                  <Edit className="size-4" />
+                               </Button>
+                               <Button
+                                 variant="ghost"
+                                 size="icon"
+                                 className="size-8"
+                                 title="Carta Convenio"
+                                 onClick={() => window.open(`/laboratorio/carta-convenio?cliente=${cliente.id}`, '_blank')}
+                               >
+                                 <FileText className="size-4" />
                                </Button>
                                 <Button
                                   variant="ghost"

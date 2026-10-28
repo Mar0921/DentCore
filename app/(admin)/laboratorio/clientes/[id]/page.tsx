@@ -1,5 +1,10 @@
-import { ClientePerfilPageClient } from '@/components/dentcore/laboratorio/cliente-perfil-page-client'
+import { AppShell } from '@/components/dentcore/app-shell'
+import { ClienteDetallePageClient } from '@/components/dentcore/laboratorio/cliente-detalle-page-client'
 
 export default function ClienteDetallePage() {
-  return <ClientePerfilPageClient />
+  return (
+    <AppShell sidebar="laboratorio" showSidebar={false}>
+      <ClienteDetallePageClient />
+    </AppShell>
+  )
 }
