@@ -114,6 +114,7 @@ const laboratorioItems = [
   { label: 'Incidencias y calidad', icon: AlertTriangle, href: '/laboratorio/incidencias', activePrefix: '/laboratorio/incidencias' },
   { label: 'CRM', icon: MessageCircleQuestion, href: '/laboratorio/crm', activePrefix: '/laboratorio/crm' },
   { label: 'Archivos del laboratorio', icon: FolderOpen, href: '/laboratorio/archivos', activePrefix: '/laboratorio/archivos' },
+  { label: 'Materiales', icon: Package, href: '/laboratorio/materiales', activePrefix: '/laboratorio/materiales' },
   { label: 'Firmas', icon: PenTool, href: '/laboratorio/firmas', activePrefix: '/laboratorio/firmas' },
 ]
 

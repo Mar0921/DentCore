@@ -257,7 +257,7 @@ export function InvitadoSolicitudesPageClient() {
 </head>
 <body>
   <div class="header">
-    <h1>Detalle de Solicitud</h1>
+    <h1>ORDEN DE FABRICACIÓN</h1>
     <div class="meta">
       <span><strong>Código trazabilidad:</strong> ${codigoTrazabilidad}</span>
       <span><strong>ID:</strong> ${solicitud.id}</span>

@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/componen
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { DentalChart } from '@/components/dentcore/solicitud/dental-chart'
+import { OrdenFabricacion } from '@/components/dentcore/solicitud/orden-fabricacion'
 import { ChevronLeft, Save, RefreshCw, Upload, FileText, Download } from 'lucide-react'
 import type { ToothStatus } from '@/components/dentcore/solicitud/solicitud-types'
 import { exportPageToPDF, getPageTitle } from '@/lib/pdf-export'
@@ -646,9 +647,23 @@ export default function SolicitudDetallePage() {
                 <span className="text-xs text-muted-foreground">Documentos adjuntos</span>
                 {Array.isArray(solicitud.archivos) && solicitud.archivos.length > 0 ? (
                   <ul className="list-disc pl-5 text-sm text-foreground">
-                    {solicitud.archivos.map((archivo: string, idx: number) => (
-                      <li key={idx}>{archivo}</li>
-                    ))}
+                    {solicitud.archivos.map((archivo: string, idx: number) => {
+                      const parts = archivo.split('|')
+                      const nombre = parts[0]?.trim() || archivo
+                      const url = parts.length > 1 ? parts.slice(1).join('|').trim() : null
+                      const href = url || (archivo.startsWith('http') || archivo.startsWith('data:') ? archivo : null)
+                      return (
+                        <li key={idx}>
+                          {href ? (
+                            <a href={href} target="_blank" rel="noreferrer" className="underline text-primary">
+                              {nombre}
+                            </a>
+                          ) : (
+                            nombre
+                          )}
+                        </li>
+                      )
+                    })}
                   </ul>
                 ) : (
                   <span className="text-sm text-muted-foreground">Sin documentos adjuntos</span>
@@ -851,6 +866,8 @@ export default function SolicitudDetallePage() {
           </div>
         </CardContent>
       </Card>
+
+      <OrdenFabricacion solicitud={solicitud} />
     </div>
   )
 }

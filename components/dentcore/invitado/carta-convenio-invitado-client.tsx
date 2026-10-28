@@ -44,6 +44,13 @@ export function CartaConvenioInvitadoClient() {
         }
       }
 
+      if (cli?.id) {
+        const { data: carta } = await supabase.from('cartas_convenio').select('firma_odontologo_data_url').eq('cliente_id', cli.id).maybeSingle()
+        if (carta?.firma_odontologo_data_url) {
+          setFirmaCliente(carta.firma_odontologo_data_url)
+        }
+      }
+
       if (labId) {
         const { data: firm } = await supabase
           .from('firmas')
@@ -54,7 +61,6 @@ export function CartaConvenioInvitadoClient() {
         if (firm) {
           setFirmas(firm)
           if (firm.length > 0) setFirmaLab(firm[0])
-          if (firm.length > 1) setFirmaCliente(firm[1])
         }
       }
     } catch (err) {
@@ -133,6 +139,10 @@ export function CartaConvenioInvitadoClient() {
     ctx.fillRect(0, 0, canvas.width, canvas.height)
   }
 
+  function handlePrint() {
+    window.print()
+  }
+
   function guardarFirmaCliente() {
     const canvas = canvasRef.current
     if (!canvas) return
@@ -141,8 +151,6 @@ export function CartaConvenioInvitadoClient() {
       alert('Debe dibujar la firma')
       return
     }
-    setFirmaCliente(dataUrl)
-    setOpenFirma(false)
     guardarEnDB(dataUrl)
   }
 
@@ -151,13 +159,27 @@ export function CartaConvenioInvitadoClient() {
       const clienteEmail = localStorage.getItem('labUserEmail')
       const { data: cli } = await supabase.from('cliente').select('id, laboratorio_id').eq('email', clienteEmail).maybeSingle()
       if (cli?.laboratorio_id && cli?.id) {
-        await supabase.from('cartas_convenio').upsert({
-          laboratorio_id: cli.laboratorio_id,
-          cliente_id: cli.id,
-          firma_odontologo_data_url: dataUrl,
-          fecha_firma: new Date().toISOString(),
-          firmado: true,
-        }, { onConflict: 'cliente_id' })
+        const { data: existing } = await supabase.from('cartas_convenio').select('id').eq('cliente_id', cli.id).maybeSingle()
+        let res
+        if (existing) {
+          res = await supabase.from('cartas_convenio').update({
+            firma_odontologo_data_url: dataUrl,
+            fecha_firma: new Date().toISOString(),
+            firmado: true,
+            laboratorio_id: cli.laboratorio_id,
+          }).eq('id', existing.id)
+        } else {
+          res = await supabase.from('cartas_convenio').insert({
+            laboratorio_id: cli.laboratorio_id,
+            cliente_id: cli.id,
+            firma_odontologo_data_url: dataUrl,
+            fecha_firma: new Date().toISOString(),
+            firmado: true,
+          })
+        }
+        console.log('GUARDADO:', res)
+        setFirmaCliente(dataUrl)
+        setOpenFirma(false)
         alert('Carta convenio firmada y guardada correctamente')
       }
     } catch (err) {
@@ -165,9 +187,9 @@ export function CartaConvenioInvitadoClient() {
     }
   }
 
-  function handlePrint() {
-    window.print()
-  }
+  useEffect(() => {
+    loadData()
+  }, [])
 
   useEffect(() => {
     if (openFirma && canvasRef.current) {

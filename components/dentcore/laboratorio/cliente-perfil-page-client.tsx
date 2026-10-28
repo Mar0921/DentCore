@@ -118,6 +118,8 @@ export function ClientePerfilPageClient({ empleado = false }: { empleado?: boole
           nombre: data.nombre,
           calle: data.calle,
           localidad: data.localidad,
+          locacion_extra: data.locacion_extra,
+          direccion_extra: data.direccion_extra,
           telefono: data.telefono,
           celular: data.celular,
           email: data.email,
@@ -199,9 +201,11 @@ export function ClientePerfilPageClient({ empleado = false }: { empleado?: boole
         .update({
           codigo: form.codigo ?? null,
           nombre: form.nombre ?? null,
-          calle: form.calle ?? null,
-          localidad: form.localidad ?? null,
-          telefono: form.telefono ?? null,
+           calle: form.calle ?? null,
+           localidad: form.localidad ?? null,
+           locacion_extra: form.locacion_extra ?? null,
+           direccion_extra: form.direccion_extra ?? null,
+           telefono: form.telefono ?? null,
           celular: form.celular ?? null,
           email: form.email ?? null,
           clinica: form.clinica ?? null,
@@ -368,14 +372,30 @@ export function ClientePerfilPageClient({ empleado = false }: { empleado?: boole
                   placeholder="Calle y número"
                 />
               </div>
-              <div className="grid gap-1.5">
-                <label className="text-sm font-medium text-primary">Localidad</label>
-                <Input
-                  value={form.localidad ?? ''}
-                  onChange={(e) => setField('localidad', e.target.value)}
-                  placeholder="Ciudad"
-                />
-              </div>
+               <div className="grid gap-1.5">
+                 <label className="text-sm font-medium text-primary">Localidad</label>
+                 <Input
+                   value={form.localidad ?? ''}
+                   onChange={(e) => setField('localidad', e.target.value)}
+                   placeholder="Ciudad"
+                 />
+               </div>
+               <div className="grid gap-1.5">
+                 <label className="text-sm font-medium text-primary">Locación Extra</label>
+                 <Input
+                   value={form.locacion_extra ?? ''}
+                   onChange={(e) => setField('locacion_extra', e.target.value)}
+                   placeholder="Locación extra"
+                 />
+               </div>
+               <div className="grid gap-1.5">
+                 <label className="text-sm font-medium text-primary">Dirección Extra</label>
+                 <Input
+                   value={form.direccion_extra ?? ''}
+                   onChange={(e) => setField('direccion_extra', e.target.value)}
+                   placeholder="Dirección extra"
+                 />
+               </div>
               <div className="grid gap-1.5">
                 <label className="text-sm font-medium text-primary">¿Tiene acceso?</label>
                 <select
@@ -399,6 +419,8 @@ export function ClientePerfilPageClient({ empleado = false }: { empleado?: boole
               <InfoRow label="Especialidad" value={especialidad} />
               <InfoRow label="Calle / Dirección" value={cliente.calle} />
               <InfoRow label="Localidad" value={cliente.localidad} />
+              <InfoRow label="Locación Extra" value={cliente.locacion_extra} />
+              <InfoRow label="Dirección Extra" value={cliente.direccion_extra} />
               <InfoRow
                 label="¿Tiene acceso?"
                 value={

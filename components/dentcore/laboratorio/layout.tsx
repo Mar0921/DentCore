@@ -72,7 +72,8 @@ const laboratorioItems = [
   { label: 'Incidencias y calidad', icon: AlertTriangle, href: '/laboratorio/incidencias' },
   { label: 'Implantes', icon: Smile, href: '/laboratorio/implantes' },
   { label: 'CRM', icon: MessageCircleQuestion, href: '/laboratorio/crm' },
-  { label: 'Archivos del laboratorio', icon: FolderOpen, href: '/laboratorio/archivos' },
+  { label: 'Firmas', icon: PenTool, href: '/laboratorio/firmas' },
+  { label: 'Materiales', icon: Package, href: '/laboratorio/materiales' },
 ]
 
 interface LaboratorioLayoutProps {

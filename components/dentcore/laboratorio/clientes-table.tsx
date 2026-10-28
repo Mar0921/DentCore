@@ -341,7 +341,7 @@ export function ClientesTable() {
                                  size="icon"
                                  className="size-8"
                                  title="Carta Convenio"
-                                 onClick={() => window.open(`/laboratorio/carta-convenio?cliente=${cliente.id}`, '_blank')}
+                                 onClick={() => router.push(`/laboratorio/carta-convenio?cliente=${cliente.id}`)}
                                >
                                  <FileText className="size-4" />
                                </Button>

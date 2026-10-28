@@ -2,7 +2,7 @@
 
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
-import { cn } from '@/lib/utils'
+import { OrdenFabricacion } from './orden-fabricacion'
 
 interface SolicitudDetailProps {
   solicitud: any
@@ -92,7 +92,14 @@ export function SolicitudDetailContent({ solicitud }: { solicitud: any }) {
       <DetailRow label="Correo" value={solicitud.odonto_email || solicitud.odontologo_email} />
       <DetailRow label="Teléfono" value={solicitud.odonto_telefono || solicitud.odontologo_telefono} />
       <DetailRow label="Tipo" value={solicitud.tipo} />
-      <DetailRow label="Dientes" value={solicitud.dientes} />
+      <DetailRow
+        label="Dientes registrados"
+        value={
+          solicitud.dientes ? (
+            <pre className="whitespace-pre-wrap text-sm">{solicitud.dientes}</pre>
+          ) : '—'
+        }
+      />
       <DetailRow label="Productos" value={solicitud.productos || '—'} />
       <DetailRow label="Piezas enviadas" value={solicitud.piezas_enviadas || '—'} />
       <DetailRow label="Indicaciones" value={solicitud.indicaciones || '—'} />
@@ -100,10 +107,56 @@ export function SolicitudDetailContent({ solicitud }: { solicitud: any }) {
         label="Documentos adjuntos"
         value={
           Array.isArray(solicitud.archivos) && solicitud.archivos.length > 0
-            ? solicitud.archivos.join(', ')
+            ? (
+              <div className="flex flex-col gap-1">
+                {solicitud.archivos.map((archivo: string, idx: number) => {
+                  if (typeof archivo === 'string' && archivo.includes('|')) {
+                    const parts = archivo.split('|')
+                    const nombre = parts[0]
+                    const contenido = parts.slice(1).join('|')
+                    if (contenido.startsWith('http')) {
+                      return (
+                        <a key={idx} href={contenido} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline text-sm break-all">
+                          {nombre}
+                        </a>
+                      )
+                    }
+                    if (contenido.startsWith('data:')) {
+                      return (
+                        <a key={idx} href={contenido} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline text-sm break-all">
+                          {nombre}
+                        </a>
+                      )
+                    }
+                    return <span key={idx} className="text-sm break-all">{nombre}</span>
+                  }
+                  if (typeof archivo === 'string' && archivo.startsWith('http')) {
+                    const nombre = decodeURIComponent(archivo.split('/').pop() || archivo)
+                    return (
+                      <a key={idx} href={archivo} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline text-sm break-all">
+                        {nombre}
+                      </a>
+                    )
+                  }
+                  if (typeof archivo === 'object' && archivo !== null) {
+                    const url = archivo.url || archivo.file_url || archivo.link
+                    const nombre = archivo.nombre || archivo.name || archivo.filename || 'Archivo'
+                    if (url) {
+                      return (
+                        <a key={idx} href={url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline text-sm break-all">
+                          {nombre}
+                        </a>
+                      )
+                    }
+                  }
+                  return <span key={idx} className="text-sm break-all">{String(archivo)}</span>
+                })}
+              </div>
+            )
             : '—'
         }
       />
+      <OrdenFabricacion solicitud={solicitud} />
       <DetailRow label="Progreso" value={
         <span className="flex items-center gap-2">
           <span className="text-sm font-medium">{solicitud.progreso ?? 0}%</span>

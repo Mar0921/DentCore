@@ -7,14 +7,13 @@ import { Button } from '@/components/ui/button'
 import { Printer } from 'lucide-react'
 import { useSearchParams } from 'next/navigation'
 
-import { AppShell } from '@/components/dentcore/app-shell'
-
 export function CartaConvenioAdminClient() {
   const searchParams = useSearchParams()
   const clienteId = searchParams.get('cliente')
   const [laboratorio, setLaboratorio] = useState<any>(null)
   const [cliente, setCliente] = useState<any>(null)
   const [firmas, setFirmas] = useState<any[]>([])
+  const [firmaCliente, setFirmaCliente] = useState<string | null>(null)
 
   useEffect(() => {
     loadData()
@@ -22,15 +21,80 @@ export function CartaConvenioAdminClient() {
 
   async function loadData() {
     try {
-      const { data: lab } = await supabase.from('laboratorio').select('*').limit(1).maybeSingle()
-      if (lab) setLaboratorio(lab)
+      setCliente(null)
+      setFirmaCliente(null)
+      setLaboratorio(null)
+      setFirmas([])
+
+      let cli: any = null
+      let carta: any = null
 
       if (clienteId) {
-        const { data: cli } = await supabase.from('cliente').select('*').eq('id', clienteId).maybeSingle()
+        const { data: cliData } = await supabase
+          .from('cliente')
+          .select('*')
+          .eq('id', clienteId)
+          .maybeSingle()
+        cli = cliData
         if (cli) setCliente(cli)
+
+        // 1. Carta por el id del cliente de la URL
+        const { data: cartasPorId } = await supabase
+          .from('cartas_convenio')
+          .select('*')
+          .eq('cliente_id', clienteId)
+          .order('created_at', { ascending: false })
+          .limit(1)
+        carta = cartasPorId?.[0] ?? null
+
+        // 2. Fallback: otras filas de cliente con el mismo email
+        if (!carta && cli?.email) {
+          const { data: mismos } = await supabase
+            .from('cliente')
+            .select('id')
+            .eq('email', cli.email)
+          const ids = (mismos || []).map((c: any) => c.id)
+
+          if (ids.length > 0) {
+            const { data: cartasPorEmail } = await supabase
+              .from('cartas_convenio')
+              .select('*')
+              .in('cliente_id', ids)
+              .order('created_at', { ascending: false })
+              .limit(1)
+            carta = cartasPorEmail?.[0] ?? null
+          }
+        }
+
+        if (carta?.firma_odontologo_data_url) {
+          setFirmaCliente(carta.firma_odontologo_data_url)
+        }
       }
 
-      if (lab?.id) {
+      // Laboratorio: carta -> cliente -> primero disponible
+      let lab: any = null
+      const labId = carta?.laboratorio_id || cli?.laboratorio_id
+
+      if (labId) {
+        const { data: labData } = await supabase
+          .from('laboratorio')
+          .select('*')
+          .eq('id', labId)
+          .maybeSingle()
+        lab = labData
+      }
+
+      if (!lab) {
+        const { data: labData } = await supabase
+          .from('laboratorio')
+          .select('*')
+          .limit(1)
+          .maybeSingle()
+        lab = labData
+      }
+
+      if (lab) {
+        setLaboratorio(lab)
         const { data: firm } = await supabase
           .from('firmas')
           .select('*')
@@ -48,13 +112,16 @@ export function CartaConvenioAdminClient() {
     window.print()
   }
 
+  const firmaDT = firmas[1] || firmas[0] || null
+
   return (
-    <AppShell sidebar="laboratorio" showSidebar={false}>
     <div className="max-w-4xl mx-auto p-6 space-y-6">
       <div className="flex items-center justify-between print:hidden">
         <div>
           <h1 className="text-2xl font-bold">Carta Convenio</h1>
-          <p className="text-muted-foreground">Plantilla de convenio del laboratorio</p>
+          <p className="text-muted-foreground">
+            {firmaCliente ? 'Carta firmada por el cliente' : 'Plantilla de convenio del laboratorio'}
+          </p>
         </div>
         <Button onClick={handlePrint} className="gap-2">
           <Printer className="size-4" />
@@ -70,7 +137,7 @@ export function CartaConvenioAdminClient() {
           </div>
 
           <div className="space-y-1">
-            <p><strong>Clínica:</strong> {cliente?.clinica || 'XXXXXXXXX'}</p>
+            <p><strong>Clínica:</strong> {cliente?.clinica || cliente?.nombre || 'XXXXXXXXX'}</p>
             <p><strong>Doctor(a):</strong> {cliente?.nombre || 'XXXXXXXXXX'}</p>
           </div>
 
@@ -111,7 +178,9 @@ export function CartaConvenioAdminClient() {
             <div className="grid grid-cols-2 gap-12">
               <div className="text-center space-y-2">
                 <div className="border-b border-black h-20 flex items-end justify-center">
-                  {firmas[0] && <img src={firmas[0].firma_data_url} alt="Firma Representante Legal" className="h-16 object-contain" />}
+                  {firmas[0] && (
+                    <img src={firmas[0].firma_data_url} alt="Firma Representante Legal" className="h-16 object-contain" />
+                  )}
                 </div>
                 <div className="space-y-1">
                   <p className="font-semibold">__________________________________</p>
@@ -124,26 +193,34 @@ export function CartaConvenioAdminClient() {
                   )}
                 </div>
               </div>
+
               <div className="text-center space-y-2">
-                <div className="border-b border-black h-20"></div>
+                <div className="border-b border-black h-20 flex items-end justify-center">
+                  {firmaCliente && (
+                    <img src={firmaCliente} alt="Firma odontólogo" className="h-16 object-contain" />
+                  )}
+                </div>
                 <div className="space-y-1">
                   <p className="font-semibold">__________________________________</p>
                   <p className="font-bold">Recibido Odontólogo o Auxiliar</p>
+                  {cliente?.nombre && <p className="text-xs">{cliente.nombre}</p>}
                 </div>
               </div>
             </div>
 
             <div className="text-center space-y-2">
               <div className="border-b border-black h-20 flex items-end justify-center w-64 mx-auto">
-                {firmas[1] && <img src={firmas[1].firma_data_url} alt="Firma D.T" className="h-16 object-contain" />}
+                {firmaDT && (
+                  <img src={firmaDT.firma_data_url} alt="Firma D.T" className="h-16 object-contain" />
+                )}
               </div>
               <div className="space-y-1">
                 <p className="font-semibold">____________________________________</p>
                 <p className="font-bold">D.T LABORATORIO DENTAL {laboratorio?.nombre?.toUpperCase() || ''}</p>
-                {firmas[1] && (
+                {firmaDT && (
                   <>
-                    <p className="text-xs">{firmas[1].nombre}</p>
-                    {firmas[1].rol && <p className="text-xs">{firmas[1].rol}</p>}
+                    <p className="text-xs">{firmaDT.nombre}</p>
+                    {firmaDT.rol && <p className="text-xs">{firmaDT.rol}</p>}
                   </>
                 )}
               </div>
@@ -154,6 +231,5 @@ export function CartaConvenioAdminClient() {
         </CardContent>
       </Card>
     </div>
-    </AppShell>
   )
 }

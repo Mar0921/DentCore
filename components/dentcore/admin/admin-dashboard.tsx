@@ -79,6 +79,9 @@ export function AdminDashboard() {
             <Plus className="size-4" />
             Nueva solicitud
           </Button>
+          <Button className="gap-2" variant="outline" onClick={() => router.push('/laboratorio/materiales')}>
+            Materiales
+          </Button>
         </div>
       </div>
 

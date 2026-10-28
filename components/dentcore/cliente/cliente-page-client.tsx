@@ -17,6 +17,8 @@ export function ClientesPageClient() {
     email: "",
     telefono: "",
     clinica: "",
+    locacion_extra: "",
+    direccion_extra: "",
     invitationlink: "",
   })
   const [search, setSearch] = useState("")
@@ -37,6 +39,8 @@ export function ClientesPageClient() {
       email: c.email || c.email || "",
       telefono: c.telefono || c.telefono || "",
       clinica: c.clinica || c.clinica || "",
+      locacion_extra: c.locacion_extra || "",
+      direccion_extra: c.direccion_extra || "",
       invitationlink: c.invitationlink || c.invitationlink || "",
     })
     setOpen(true)
@@ -49,6 +53,8 @@ export function ClientesPageClient() {
       email: "",
       telefono: "",
       clinica: "",
+      locacion_extra: "",
+      direccion_extra: "",
       invitationlink: "",
     })
     setOpen(true)
@@ -214,6 +220,22 @@ export function ClientesPageClient() {
                 value={formData.clinica || ""}
                 onChange={(e) => setFormData({ ...formData, clinica: e.target.value })}
                 placeholder="Nombre de la clínica"
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium">Locación Extra</label>
+              <Input
+                value={formData.locacion_extra || ""}
+                onChange={(e) => setFormData({ ...formData, locacion_extra: e.target.value })}
+                placeholder="Locación extra"
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium">Dirección Extra</label>
+              <Input
+                value={formData.direccion_extra || ""}
+                onChange={(e) => setFormData({ ...formData, direccion_extra: e.target.value })}
+                placeholder="Dirección extra"
               />
             </div>
             <div>
