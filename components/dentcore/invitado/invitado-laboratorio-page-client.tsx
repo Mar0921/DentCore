@@ -41,6 +41,8 @@ export function InvitadoLaboratorioPageClient() {
           email: data.email || "",
           telefono: data.telefono || "",
           clinica: data.clinica || "",
+          locacion_extra: data.locacion_extra || "",
+          direccion_extra: data.direccion_extra || "",
         })
       }
     } catch (err) {

@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
@@ -62,22 +62,23 @@ import {
 const mainNavItems = [
   { label: 'Trabajos', href: '/trabajos', active: false },
   { label: 'Mis trabajos', href: '/trabajos/mios', active: false },
-  { label: 'Facturación', href: '/facturacion', active: false },
-  { label: 'Almacén y gastos', href: '/almacen', active: false },
+  { label: 'FacturaciÃ³n', href: '/facturacion', active: false },
+  { label: 'AlmacÃ©n y gastos', href: '/almacen', active: false },
   { label: 'Laboratorio', href: '/laboratorio', active: false },
-  { label: 'Análisis', href: '/analisis', active: false },
+  { label: 'AnÃ¡lisis', href: '/analisis', active: false },
 ]
 
 const adminNavItems = [
   { label: 'Dashboard', href: '/laboratorio', active: false },
   { label: 'Clientes', href: '/laboratorio/clientes', active: false },
-  { label: 'Análisis', href: '/laboratorio/analisis', active: false },
+  { label: 'AnÃ¡lisis', href: '/laboratorio/analisis', active: false },
   { label: 'Productos', href: '/laboratorio/productos', active: false },
   { label: 'Empleados', href: '/laboratorio/empleados', active: false },
   { label: 'Solicitudes', href: '/laboratorio/solicitudes', active: false },
 ]
 
 const invitadoNavItems = [
+  { label: 'Chat', href: '/invitado-laboratorio/chat', active: false },
   { label: 'Inicio', href: '/invitado-laboratorio', active: false },
   { label: 'Solicitudes', href: '/invitado-laboratorio/solicitudes', active: false },
   { label: 'Productos', href: '/invitado-laboratorio/productos', active: false },
@@ -89,10 +90,10 @@ const sidebarItems = [
   { label: 'Nuevos pedidos', icon: Inbox, href: '/trabajos?tab=nuevos', activePrefix: '/trabajos' },
   { label: 'Trabajos en curso', icon: Clock, href: '/trabajos?tab=en_curso', activePrefix: '/trabajos' },
   { label: 'Externalizados', icon: Globe, href: '/trabajos?tab=externalizados', activePrefix: '/trabajos' },
-  { label: 'Planificación', icon: Calendar, href: '/planificacion', activePrefix: '/planificacion' },
-  { label: 'Listos/en clínica', icon: CheckCircle2, href: '/trabajos?tab=listos', activePrefix: '/trabajos' },
+  { label: 'PlanificaciÃ³n', icon: Calendar, href: '/planificacion', activePrefix: '/planificacion' },
+  { label: 'Listos/en clÃ­nica', icon: CheckCircle2, href: '/trabajos?tab=listos', activePrefix: '/trabajos' },
   { label: 'Mensajes/elementos', icon: MessageSquare, href: '/trabajos/mensajes', activePrefix: '/trabajos/mensajes' },
-  { label: 'Recogidas y envíos', icon: Truck, href: '/trabajos/recogidas', activePrefix: '/trabajos/recogidas' },
+  { label: 'Recogidas y envÃ­os', icon: Truck, href: '/trabajos/recogidas', activePrefix: '/trabajos/recogidas' },
   { label: 'Todos los trabajos', icon: Trash2, href: '/trabajos?tab=todos', activePrefix: '/trabajos' },
 ]
 
@@ -107,6 +108,7 @@ const empleadoItems = [
 ]
 
 const laboratorioItems = [
+  { label: 'Chat', icon: MessageCircle, href: '/laboratorio/chat', activePrefix: '/laboratorio/chat' },
   { label: 'Clientes', icon: Users, href: '/laboratorio/cliente', activePrefix: '/laboratorio/cliente' },
   { label: 'Tarifas', icon: DollarSign, href: '/laboratorio/tarifas', activePrefix: '/laboratorio/tarifas' },
   { label: 'Departamentos', icon: Building2, href: '/laboratorio/departamentos', activePrefix: '/laboratorio/departamentos' },
@@ -212,7 +214,7 @@ export function AppShell({ children, sidebar = 'trabajos', showSidebar = true }:
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => setSupportOpen(true)}>
                   <AlertCircle className="size-4 mr-2" />
-                  Soporte técnico
+                  Soporte tÃ©cnico
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => setSupportOpen(true)}>
                   <AlertCircle className="size-4 mr-2" />
@@ -232,7 +234,7 @@ export function AppShell({ children, sidebar = 'trabajos', showSidebar = true }:
               <Button variant="ghost" className="gap-1.5 text-xs">
                 <User className="size-4" />
                 <span className="font-medium">{invitadoNombre || 'Invitado'}</span>
-                <span className="text-muted-foreground">({invitadoEmail || '—'})</span>
+                <span className="text-muted-foreground">({invitadoEmail || 'â€”'})</span>
               </Button>
             ) : (
               <>
@@ -256,7 +258,7 @@ export function AppShell({ children, sidebar = 'trabajos', showSidebar = true }:
                   <DropdownMenuContent align="end">
                     <DropdownMenuItem>
                       <Key className="size-4" />
-                      Cambiar contraseña
+                      Cambiar contraseÃ±a
                     </DropdownMenuItem>
                     <DropdownMenuItem>
                       <Shield className="size-4" />
@@ -273,7 +275,7 @@ export function AppShell({ children, sidebar = 'trabajos', showSidebar = true }:
                     <DropdownMenuSeparator />
                     <DropdownMenuItem onClick={() => router.push('/iniciar-sesion')}>
                       <LogOut className="size-4" />
-                      Cerrar sesión
+                      Cerrar sesiÃ³n
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
@@ -328,7 +330,7 @@ export function AppShell({ children, sidebar = 'trabajos', showSidebar = true }:
                 <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
                 <input
                   type="text"
-                  placeholder="Buscar trabajo por código"
+                  placeholder="Buscar trabajo por cÃ³digo"
                   className="h-9 w-full rounded-lg border border-border bg-background pl-9 pr-3 text-sm outline-none transition-colors placeholder:text-muted-foreground/70 focus:border-accent focus:ring-2 focus:ring-accent/30"
                 />
               </div>
@@ -401,3 +403,5 @@ export function AppShell({ children, sidebar = 'trabajos', showSidebar = true }:
     </div>
   )
 }
+
+
