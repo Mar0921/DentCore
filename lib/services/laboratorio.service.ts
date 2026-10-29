@@ -81,7 +81,6 @@ export async function createAdmin(data: {
       laboratorio_id: data.laboratorioId,
       nombre: data.nombre,
       email: data.email,
-      contraseña: data.password, // En producción, hashear con bcrypt
       rol: 'admin',
       departamento: 'Administración',
       activo: true,

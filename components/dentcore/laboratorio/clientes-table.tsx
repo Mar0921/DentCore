@@ -57,14 +57,16 @@ export function ClientesTable() {
     loadClientes()
   }, [])
 
-  async function loadClientes() {
-    setLoading(true)
-    try {
-      const { data, error } = await supabase
-        .from('cliente')
-        .select('*')
-        .order('created_at', { ascending: false })
-      if (!error && data) {
+   async function loadClientes() {
+     setLoading(true)
+     try {
+       const { data: labs } = await supabase.from('laboratorio').select('id').limit(1)
+       const labId = labs?.[0]?.id
+       let query = supabase.from('cliente').select('*').order('created_at', { ascending: false })
+       if (labId) query = query.eq('laboratorio_id', labId)
+       const { data, error } = await query
+       if (!error && data) {
+
         const odontoMap = await loadOdontologosPorNombre()
         setClientes(
           data.map((c: any) => ({
@@ -252,18 +254,12 @@ export function ClientesTable() {
                        <th className="px-4 py-3 font-medium text-muted-foreground">
                          Localidad
                        </th>
-                       <th className="px-4 py-3 font-medium text-muted-foreground">
-                         Teléfono
-                       </th>
-                       <th className="px-4 py-3 font-medium text-muted-foreground">
-                         Celular
-                       </th>
-                       <th className="px-4 py-3 font-medium text-muted-foreground">
-                         Clínica
-                       </th>
-                       <th className="px-4 py-3 font-medium text-muted-foreground">
-                         Especialidad
-                       </th>
+                        <th className="px-4 py-3 font-medium text-muted-foreground">
+                          Teléfono
+                        </th>
+                        <th className="px-4 py-3 font-medium text-muted-foreground">
+                          Clínica
+                        </th>
                        <th className="px-4 py-3 font-medium text-muted-foreground text-center">
                          ¿Tiene acceso?
                        </th>
@@ -275,13 +271,13 @@ export function ClientesTable() {
                    <tbody className="divide-y divide-border">
                      {loading ? (
                        <tr>
-                         <td colSpan={10} className="px-4 py-8 text-center text-sm text-muted-foreground">
+                         <td colSpan={8} className="px-4 py-8 text-center text-sm text-muted-foreground">
                            Cargando clientes...
                          </td>
                        </tr>
                      ) : filtered.length === 0 ? (
                        <tr>
-                         <td colSpan={10} className="px-4 py-12 text-center text-sm text-muted-foreground">
+                         <td colSpan={8} className="px-4 py-12 text-center text-sm text-muted-foreground">
                            No se encontraron clientes con ese criterio.
                          </td>
                        </tr>
@@ -305,18 +301,12 @@ export function ClientesTable() {
                            <td className="px-4 py-4 text-muted-foreground">
                              {cliente.localidad || '—'}
                            </td>
-                           <td className="px-4 py-4 text-muted-foreground">
-                             {cliente.telefono || '—'}
-                           </td>
-                           <td className="px-4 py-4 text-muted-foreground">
-                             {cliente.celular || '—'}
-                           </td>
-                           <td className="px-4 py-4 text-muted-foreground">
-                             {cliente.clinica || '—'}
-                           </td>
-                           <td className="px-4 py-4 text-muted-foreground">
-                             {cliente.especialidad || '—'}
-                           </td>
+                            <td className="px-4 py-4 text-muted-foreground">
+                              {cliente.telefono || '—'}
+                            </td>
+                            <td className="px-4 py-4 text-muted-foreground">
+                              {cliente.clinica || '—'}
+                            </td>
                            <td className="px-4 py-4 text-center">
                             <span
                               className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ${cliente.tieneAcceso ? 'bg-accent/15 text-accent' : 'bg-destructive/10 text-destructive'

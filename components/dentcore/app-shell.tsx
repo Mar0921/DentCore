@@ -58,6 +58,7 @@ import {
   DropdownMenuTrigger,
   DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu'
+import { supabase } from '@/lib/supabase'
 
 const mainNavItems = [
   { label: 'Trabajos', href: '/trabajos', active: false },
@@ -101,6 +102,7 @@ const empleadoItems = [
   { label: 'Mis trabajos', icon: Briefcase, href: '/empleado/trabajos', activePrefix: '/empleado/trabajos' },
   { label: 'Laboratorio', icon: FlaskConical, href: '/empleado/mi-laboratorio', activePrefix: '/empleado/mi-laboratorio' },
   { label: 'Solicitudes', icon: FileText, href: '/empleado/mis-solicitudes', activePrefix: '/empleado/mis-solicitudes' },
+  { label: 'Incidencias', icon: FileText, href: '/empleado/incidencias', activePrefix: '/empleado/incidencias' },
   { label: 'Clientes', icon: Users, href: '/empleado/clientes', activePrefix: '/empleado/clientes' },
    { label: 'Fases', icon: GitBranch, href: '/empleado/fases', activePrefix: '/empleado/fases' },
   { label: 'Calendario', icon: CalendarDays, href: '/empleado/calendario', activePrefix: '/empleado/calendario' },
@@ -137,6 +139,17 @@ export function AppShell({ children, sidebar = 'trabajos', showSidebar = true }:
   const pathname = usePathname()
   const router = useRouter()
   const [isExporting, setIsExporting] = useState(false)
+
+  async function handleLogout() {
+    await supabase.auth.signOut()
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('labUserEmail')
+      localStorage.removeItem('labUserName')
+      localStorage.removeItem('labName')
+      localStorage.removeItem('labUserType')
+    }
+    router.push('/iniciar-sesion')
+  }
 
   async function handleExportPDF() {
     setIsExporting(true)
@@ -273,9 +286,9 @@ export function AppShell({ children, sidebar = 'trabajos', showSidebar = true }:
                       Mi calendario
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
-                    <DropdownMenuItem onClick={() => router.push('/iniciar-sesion')}>
+                    <DropdownMenuItem onClick={handleLogout}>
                       <LogOut className="size-4" />
-                      Cerrar sesiÃ³n
+                      Cerrar sesión
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
@@ -304,7 +317,7 @@ export function AppShell({ children, sidebar = 'trabajos', showSidebar = true }:
             </Link>
           ))}
           <div className="ml-auto flex items-center gap-1">
-            <Button variant="ghost" size="icon" className="size-8" onClick={() => router.push('/iniciar-sesion')}>
+            <Button variant="ghost" size="icon" className="size-8" onClick={handleLogout}>
               <LogOut className="size-4" />
             </Button>
             <Button variant="ghost" size="icon" className="size-8" onClick={handleExportPDF} title="Exportar a PDF" disabled={isExporting}>

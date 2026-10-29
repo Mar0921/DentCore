@@ -42,18 +42,29 @@ export function LoginForm() {
 
   async function handleSubmitLogin() {
     try {
-      // Invitado Laboratorio == Cliente: autenticación contra la tabla `cliente`
+      const correo = email.trim().toLowerCase()
+
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: correo,
+        password,
+      })
+
+      if (error || !data.user) {
+        setErrors({ submit: 'Correo o contraseña incorrectos' })
+        setSubmitting(false)
+        return
+      }
+
       if (role === 'invitado-laboratorio') {
         const { data: cliente, error: cliError } = await supabase
           .from('cliente')
           .select('*, laboratorio(*)')
-          .eq('email', email)
-          .eq('password', password)
-          .single()
+          .eq('email', correo)
+          .maybeSingle()
 
         if (cliente && !cliError) {
-          // Verificación de tipo de acceso: el cliente debe tener acceso habilitado
           if (!cliente.tiene_acceso) {
+            await supabase.auth.signOut()
             setErrors({
               submit: 'No tienes permiso para acceder. Pide al laboratorio que habilite tu acceso.',
             })
@@ -63,6 +74,7 @@ export function LoginForm() {
 
           const laboratorio = cliente.laboratorio
           if (!laboratorio || !laboratorio.susactivo) {
+            await supabase.auth.signOut()
             setErrors({
               submit: 'Ocurrió un error, por favor comunícate con tu laboratorio.',
             })
@@ -74,8 +86,8 @@ export function LoginForm() {
           setDone(true)
 
           localStorage.setItem('labUserType', 'invitado-laboratorio')
-          localStorage.setItem('labUserEmail', cliente.email || '')
-          localStorage.setItem('labUserName', cliente.nombre)
+          localStorage.setItem('labUserEmail', cliente.email || correo)
+          localStorage.setItem('labUserName', cliente.nombre || correo.split('@')[0])
           if (laboratorio) {
             localStorage.setItem('labName', laboratorio.nombre)
           }
@@ -84,13 +96,13 @@ export function LoginForm() {
           return
         }
 
-        // No hay cliente: ¿es un empleado intentando entrar como invitado?
         const { data: empCheck } = await supabase
           .from('empleados')
           .select('id')
-          .eq('email', email)
+          .eq('email', correo)
           .maybeSingle()
 
+        await supabase.auth.signOut()
         setErrors({
           submit: empCheck
             ? 'No tienes permiso para acceder como invitado.'
@@ -100,25 +112,20 @@ export function LoginForm() {
         return
       }
 
-      // --- Empleado / Administrador ---
-      // La credencial debe coincidir con el tipo de acceso seleccionado:
-      //  - administrador -> empleado con rol 'admin'
-      //  - empleado -> empleado que NO es admin (técnico/asistente/gerente)
-      const base = supabase
+      const baseQuery = supabase
         .from('empleados')
         .select('*, laboratorio(*)')
-        .eq('email', email)
-        .eq('contraseña', password) // En producción usar Supabase Auth
+        .eq('email', correo)
 
       const { data: employee, error: empError } =
         role === 'administrador'
-          ? await base.eq('rol', 'admin').single()
-          : await base.neq('rol', 'admin').single()
+          ? await baseQuery.eq('rol', 'admin').maybeSingle()
+          : await baseQuery.neq('rol', 'admin').maybeSingle()
 
       if (employee && !empError) {
-        // Verificar si la suscripción está activa
         const laboratorio = employee.laboratorio
         if (!laboratorio || !laboratorio.susactivo) {
+          await supabase.auth.signOut()
           setSuspenso(true)
           if (role === 'administrador') {
             setErrors({ submit: 'Tu suscripción está pendiente de pago.' })
@@ -132,26 +139,25 @@ export function LoginForm() {
         setSubmitting(false)
         setDone(true)
 
-        // Guardar información del usuario en localStorage
         localStorage.setItem('labUserType', role === 'administrador' ? 'administrador' : 'empleado')
-        localStorage.setItem('labUserEmail', employee.email || '')
-        localStorage.setItem('labUserName', employee.nombre)
+        localStorage.setItem('labUserEmail', employee.email || correo)
+        localStorage.setItem('labUserName', employee.nombre?.trim() || correo.split('@')[0])
         if (laboratorio) {
           localStorage.setItem('labName', laboratorio.nombre)
         }
 
-        router.push(role === 'administrador' ? '/laboratorio' : '/empleado')
+        router.push(role === 'administrador' ? '/laboratorio' : '/empleado/trabajos')
         return
       }
 
-      // No hay empleado con ese rol: ¿el email pertenece a un empleado de otro rol?
       const { data: empCheck } = await supabase
         .from('empleados')
         .select('rol')
-        .eq('email', email)
+        .eq('email', correo)
         .maybeSingle()
 
       if (empCheck) {
+        await supabase.auth.signOut()
         setErrors({
           submit: `No tienes permiso para acceder como ${role === 'administrador' ? 'administrador' : 'empleado'}.`,
         })
@@ -159,13 +165,13 @@ export function LoginForm() {
         return
       }
 
-      // El email no es empleado: ¿es un cliente intentando entrar como empleado?
       const { data: cliCheck } = await supabase
         .from('cliente')
         .select('id')
-        .eq('email', email)
+        .eq('email', correo)
         .maybeSingle()
 
+      await supabase.auth.signOut()
       setErrors({
         submit: cliCheck
           ? 'No tienes permiso para acceder como empleado.'
@@ -173,6 +179,7 @@ export function LoginForm() {
       })
       setSubmitting(false)
     } catch (err: any) {
+      await supabase.auth.signOut()
       setErrors({ submit: err.message || 'Error al iniciar sesión.' })
       setSubmitting(false)
     }
@@ -185,22 +192,11 @@ export function LoginForm() {
           <Lock className="size-6 text-accent" />
         </div>
         <h1 className="mt-5 font-heading text-xl font-bold text-primary">
-          Autenticación de demostración
+          Sesión iniciada correctamente
         </h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          El inicio de sesión aún no está conectado a un backend. Cuando lo conectemos, aquí accederás a tu panel de DentCore.
+          Redirigiendo al panel correspondiente...
         </p>
-        <div className="mt-6 flex flex-col gap-2">
-          <Button render={<Link href="/trabajos" />} className="h-11 w-full rounded-full">
-            Ir a Trabajos (empleado)
-          </Button>
-          <Button render={<Link href="/invitado-laboratorio" />} variant="outline" className="h-11 w-full rounded-full">
-            Ir a Invitado Laboratorio
-          </Button>
-          <Button render={<Link href="/laboratorio" />} variant="outline" className="h-11 w-full rounded-full">
-            Ir al Laboratorio (admin)
-          </Button>
-        </div>
       </div>
     )
   }

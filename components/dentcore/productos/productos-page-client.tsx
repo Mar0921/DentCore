@@ -108,11 +108,14 @@ export function ProductosPageClient() {
       if (editing) {
         const { error } = await supabase.from("productos").update(dataToSave).eq("id", editing.id)
         if (error) throw error
-      } else {
-        const { data, error } = await supabase.from("productos").insert(dataToSave).select("id").single()
-        if (error) throw error
-        productId = data.id
-      }
+       } else {
+         const { data: labs } = await supabase.from('laboratorio').select('id').limit(1)
+         const labId = labs?.[0]?.id
+         const insertData = { ...dataToSave, laboratorio_id: labId }
+         const { data, error } = await supabase.from("productos").insert(insertData).select("id").single()
+         if (error) throw error
+         productId = data.id
+       }
 
       // Guardar fases del producto
       if (productId) {

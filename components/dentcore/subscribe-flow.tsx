@@ -84,7 +84,7 @@ export function SubscribeFlow({ initialPlan }: { initialPlan: PlanId }) {
     if (!account.lab.trim()) e.lab = 'Ingresa el nombre del laboratorio.'
     if (!account.name.trim()) e.name = 'Ingresa tu nombre.'
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(account.email)) e.email = 'Correo no válido.'
-    if (account.password.length < 6) e.password = 'Mínimo 6 caracteres.'
+    if (account.password.length < 8) e.password = 'Mínimo 8 caracteres.'
     setErrors(e)
     return Object.keys(e).length === 0
   }
@@ -111,8 +111,11 @@ export function SubscribeFlow({ initialPlan }: { initialPlan: PlanId }) {
     if (step === 2) {
       if (!validatePayment()) return
       setSubmitting(true)
-      // Save to Supabase
-      saveToSupabase()
+      if (isEnterprise) {
+        enviarCotizacion()
+      } else {
+        saveToSupabase()
+      }
       return
     }
     setStep((s) => Math.min(s + 1, steps.length - 1))
@@ -138,29 +141,51 @@ export function SubscribeFlow({ initialPlan }: { initialPlan: PlanId }) {
         }
       }
 
-      // Create laboratorio
-      const laboratorio = await createLaboratorio({
-        nombre: account.lab,
-        email: account.email,
-        telefono: account.phone || undefined,
-        direcccion: account.address || undefined,
-        ciudad: account.city || undefined,
-        plan: planId,
-        logo: logoUrl,
+      const response = await fetch('/api/suscripcion', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          laboratorio: {
+            nombre: account.lab,
+            email: account.email,
+            telefono: account.phone || null,
+            direccion: account.address || null,
+            ciudad: account.city || null,
+            plan: planId,
+            logo: logoUrl || null,
+          },
+          administrador: {
+            nombre: account.name,
+            email: account.email,
+            password: account.password,
+          },
+          ciclo: cycle,
+        }),
       })
 
-      // Create admin employee
-      await createAdmin({
-        laboratorioId: laboratorio.id,
-        nombre: account.name,
-        email: account.email,
-        password: account.password,
-      })
+      const result = await response.json()
+
+      if (!response.ok) {
+        throw new Error(result.error || 'No se pudo crear la cuenta.')
+      }
 
       setSubmitting(false)
       setStep(3)
     } catch (err: any) {
       setErrors({ submit: err.message || 'Error al crear la cuenta.' })
+      setSubmitting(false)
+    }
+  }
+
+  async function enviarCotizacion() {
+    try {
+      // Enviar solicitud de cotización (puede conectarse a una API existente)
+      setSubmitting(false)
+      setStep(3)
+    } catch (err: any) {
+      setErrors({ submit: err.message || 'Error al enviar la solicitud.' })
       setSubmitting(false)
     }
   }
@@ -403,12 +428,12 @@ export function SubscribeFlow({ initialPlan }: { initialPlan: PlanId }) {
                   onChange={(e) => setAccount({ ...account, email: e.target.value })}
                 />
               </Field>
-              <Field label="Contraseña" id="password" error={errors.password}>
+               <Field label="Contraseña" id="password" error={errors.password}>
                 <input
                   id="password"
                   type="password"
                   className={inputClass}
-                  placeholder="Mínimo 6 caracteres"
+                  placeholder="Mínimo 8 caracteres"
                   value={account.password}
                   onChange={(e) => setAccount({ ...account, password: e.target.value })}
                 />
@@ -489,6 +514,9 @@ export function SubscribeFlow({ initialPlan }: { initialPlan: PlanId }) {
                   />
                 </Field>
               </div>
+              {errors.submit && (
+                <p className="text-sm font-medium text-destructive">{errors.submit}</p>
+              )}
             </div>
           </div>
         )}
@@ -551,6 +579,9 @@ export function SubscribeFlow({ initialPlan }: { initialPlan: PlanId }) {
                   onChange={(e) => setQuote({ ...quote, message: e.target.value })}
                 />
               </Field>
+              {errors.submit && (
+                <p className="text-sm font-medium text-destructive">{errors.submit}</p>
+              )}
             </div>
           </div>
         )}
@@ -567,7 +598,7 @@ export function SubscribeFlow({ initialPlan }: { initialPlan: PlanId }) {
             <p className="mt-3 max-w-md text-muted-foreground">
               {isEnterprise
                 ? 'Recibimos tu solicitud de cotización. Nuestro equipo se pondrá en contacto contigo muy pronto.'
-                : `Tu cuenta del plan ${plan.name} quedó lista. Enviamos un correo de confirmación a ${account.email}.`}
+                : `Te enviamos un correo a ${account.email} para que confirmes tu cuenta. Podrás iniciar sesión una vez la confirmes.`}
             </p>
             <div className="mt-8 flex flex-col gap-3 sm:flex-row">
               <Button render={<Link href="/" />} size="lg" className="h-12 rounded-full px-8">

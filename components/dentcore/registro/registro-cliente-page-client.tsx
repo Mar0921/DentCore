@@ -45,30 +45,33 @@ export function RegistroClientePageClient() {
 
     setSubmitting(true)
     try {
-      // Buscar el primer laboratorio
-      const { data: labs } = await supabase.from("laboratorio").select("id").limit(1)
-      if (!labs || labs.length === 0) {
-        alert("No hay laboratorio registrado")
-        setSubmitting(false)
-        return
-      }
+       // Buscar el primer laboratorio
+       const { data: labs } = await supabase.from("laboratorio").select("id").limit(1)
+       if (!labs || labs.length === 0) {
+         alert("No hay laboratorio registrado")
+         setSubmitting(false)
+         return
+       }
 
-      // Insertar cliente
-      const { error } = await supabase.from("cliente").insert({
-        nombre: formData.nombre,
-        email: formData.email,
-        telefono: formData.telefono,
-        calle: formData.calle,
-        localidad: formData.localidad,
-        clinica: formData.clinica,
-        locacion_extra: formData.locacion_extra,
-        direccion_extra: formData.direccion_extra,
-        laboratorio_id: labs[0].id,
-        password: formData.password,
-        tiene_acceso: true,
-      })
+       const response = await fetch('/api/registro-cliente', {
+         method: 'POST',
+         headers: { 'Content-Type': 'application/json' },
+         body: JSON.stringify({
+           nombre: formData.nombre,
+           email: formData.email,
+           telefono: formData.telefono,
+           calle: formData.calle,
+           localidad: formData.localidad,
+           clinica: formData.clinica,
+           locacion_extra: formData.locacion_extra,
+           direccion_extra: formData.direccion_extra,
+           password: formData.password,
+           laboratorio_id: labs[0].id,
+         }),
+       })
+       const result = await response.json()
+       if (!response.ok) throw new Error(result.error || 'No se pudo registrar.')
 
-      if (error) throw error
 
       setDone(true)
     } catch (err: any) {

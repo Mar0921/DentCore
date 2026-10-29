@@ -93,7 +93,7 @@ export function EmpleadosPageClient() {
         delete updates.departamento
         delete updates.departamento_id
         if (formData.departamento_id) updates.departamento_id = formData.departamento_id
-        if (!updates.contraseña) delete updates.contraseña
+        delete updates.contraseña
         const { error } = await supabase.from("empleados").update(updates).eq("id", editing.id)
         if (error) throw error
       } else {
@@ -101,11 +101,24 @@ export function EmpleadosPageClient() {
           alert("La contraseña debe tener al menos 6 caracteres.")
           return
         }
-        const toInsert: any = { ...formData, contraseña: formData.contraseña, laboratorio_id: laboratorioId }
-        delete toInsert.departamento
-        if (!toInsert.departamento_id) delete toInsert.departamento_id
-        const { error } = await supabase.from("empleados").insert(toInsert)
-        if (error) throw error
+         const response = await fetch('/api/empleados', {
+           method: 'POST',
+           headers: { 'Content-Type': 'application/json' },
+           body: JSON.stringify({
+             laboratorio_id: laboratorioId,
+             nombre: formData.nombre,
+             email: formData.email,
+             contraseña: formData.contraseña,
+             rol: formData.rol,
+             departamento: formData.departamento,
+             departamento_id: formData.departamento_id,
+             telefono: formData.telefono,
+             activo: formData.activo,
+           }),
+         })
+         const result = await response.json()
+         if (!response.ok) throw new Error(result.error || 'No se pudo crear el empleado.')
+
       }
       setOpen(false)
       loadEmpleados()

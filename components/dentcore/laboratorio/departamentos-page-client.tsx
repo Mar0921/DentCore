@@ -43,23 +43,38 @@ export function DepartamentosPageClient({ empleado = false }: { empleado?: boole
   const [loading, setLoading] = useState(true)
   const [loadingEmpleados, setLoadingEmpleados] = useState(true)
   const [asignacionesLocales, setAsignacionesLocales] = useState<Record<string, string>>({})
-  const [formData, setFormData] = useState({ nombre: '', descripcion: '' })
+  const [laboratorioId, setLaboratorioId] = useState<string | null>(null)
+const [formData, setFormData] = useState({ nombre: '', descripcion: '' })
+
   const [mensajeError, setMensajeError] = useState<string | null>(null)
 
   useEffect(() => {
+    loadLaboratorio()
     loadDepartamentos()
     loadEmpleados()
   }, [])
+
+  useEffect(() => {
+    if (laboratorioId) loadDepartamentos()
+  }, [laboratorioId])
+
+
+  async function loadLaboratorio() {
+    const { data } = await supabase.from('laboratorio').select('id').limit(1)
+    if (data && data.length > 0) setLaboratorioId(data[0].id)
+  }
+
+
 
   /* ------------------------------------------------------------------ */
   /* Carga de datos                                                     */
   /* ------------------------------------------------------------------ */
   async function loadDepartamentos() {
     setLoading(true)
-    const { data, error } = await supabase
-      .from('departamentos')
-      .select('id, nombre, descripcion, created_at')
-      .order('created_at', { ascending: false })
+    let query = supabase.from('departamentos').select('id, nombre, descripcion, created_at').order('created_at', { ascending: false })
+    if (laboratorioId) query = query.eq('laboratorio_id', laboratorioId)
+    const { data, error } = await query
+
 
     if (error) {
       console.error('Error cargando departamentos:', error)
@@ -157,9 +172,10 @@ export function DepartamentosPageClient({ empleado = false }: { empleado?: boole
           .eq('id', editing.id)
         if (error) throw error
       } else {
-        const { error } = await supabase
-          .from('departamentos')
-          .insert({ nombre: formData.nombre, descripcion: formData.descripcion })
+         const { error } = await supabase
+           .from('departamentos')
+           .insert({ nombre: formData.nombre, descripcion: formData.descripcion, laboratorio_id: laboratorioId })
+
         if (error) throw error
       }
       setOpen(false)
