@@ -113,6 +113,7 @@ export default function SolicitudDetallePage() {
   const [garantiaFile, setGarantiaFile] = useState<File | null>(null)
   const garantiaInputRef = useRef<HTMLInputElement>(null)
   const firmaInputRef = useRef<HTMLInputElement>(null)
+  const [fichas, setFichas] = useState<any[]>([])
 
   useEffect(() => {
     if (!id) return
@@ -209,6 +210,26 @@ export default function SolicitudDetallePage() {
     loadGarantia()
   }, [solicitud])
 
+  useEffect(() => {
+    if (!solicitud) return
+
+    async function loadFichas() {
+      try {
+        const res = await fetch(`/api/fichas-tecnicas?solicitud_id=${encodeURIComponent(solicitud!.id)}`)
+        if (!res.ok) {
+          console.error('Error fetching fichas tecnicas:', await res.text())
+          return
+        }
+        const result = await res.json()
+        setFichas(result.data || [])
+      } catch (e) {
+        console.error('Error loading fichas tecnicas:', e)
+      }
+    }
+
+    loadFichas()
+  }, [solicitud])
+
   async function handleGarantiaSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!solicitud || !garantiaFile) return
@@ -261,6 +282,25 @@ export default function SolicitudDetallePage() {
       if (garantiaInputRef.current) {
         garantiaInputRef.current.value = ''
       }
+    } catch (e) {
+      alert('Error al eliminar: ' + (e as any).message)
+    }
+  }
+
+  async function handleFichaDelete(fichaId: string) {
+    if (!confirm('¿Eliminar ficha técnica?')) return
+
+    try {
+      const res = await fetch(`/api/fichas-tecnicas?id=${encodeURIComponent(fichaId)}`, {
+        method: 'DELETE',
+      })
+
+      if (!res.ok) {
+        const result = await res.json()
+        throw new Error(result.error || 'Error al eliminar')
+      }
+
+      setFichas((prev) => prev.filter((f) => f.id !== fichaId))
     } catch (e) {
       alert('Error al eliminar: ' + (e as any).message)
     }
@@ -863,6 +903,72 @@ export default function SolicitudDetallePage() {
             ) : (
               <span className="text-sm text-muted-foreground">Sin registros en buzón</span>
             )}
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Fichas técnicas</CardTitle>
+        </CardHeader>
+        <CardContent className="grid gap-3 sm:grid-cols-2">
+          <div className="sm:col-span-2">
+            <span className="text-xs text-muted-foreground">Documentos técnicos de la solicitud</span>
+            {fichas.length > 0 ? (
+              <ul className="mt-2 divide-y divide-border">
+                {fichas.map((ficha) => {
+                  const href =
+                    ficha.archivo_url ||
+                    (ficha.nombre_archivo?.startsWith('http') ? ficha.nombre_archivo : null)
+                  const isViewable = isViewableDocument(ficha.nombre_archivo, ficha.tipo_mime)
+                  return (
+                    <li key={ficha.id} className="py-2 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                      <div className="flex items-center gap-3">
+                        {isViewable ? (
+                          <a
+                            href={href || '#'}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="underline text-primary text-sm"
+                          >
+                            {ficha.nombre_archivo || 'Ficha técnica'}
+                          </a>
+                        ) : (
+                          <span className="text-sm text-foreground truncate max-w-[200px]">
+                            {ficha.nombre_archivo || 'Ficha técnica'}
+                          </span>
+                        )}
+                        <span className="text-xs text-muted-foreground">
+                          {new Date(ficha.created_at).toLocaleString('es-ES')}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {href && !isViewable && (
+                          <a
+                            href={href}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-xs underline text-primary"
+                          >
+                            Descargar
+                          </a>
+                        )}
+                        <Button variant="destructive" size="sm" onClick={() => handleFichaDelete(ficha.id)}>
+                          Eliminar
+                        </Button>
+                      </div>
+                    </li>
+                  )
+                })}
+              </ul>
+            ) : (
+              <span className="text-sm text-muted-foreground">Sin fichas técnicas registradas</span>
+            )}
+            <div className="mt-4 flex gap-2">
+              <Button type="button" variant="outline" size="sm" onClick={() => router.push(`/laboratorio/fichas-tecnicas?solicitud_id=${encodeURIComponent(solicitud.id)}`)}>
+                Seleccionar archivo
+              </Button>
+            </div>
           </div>
         </CardContent>
       </Card>

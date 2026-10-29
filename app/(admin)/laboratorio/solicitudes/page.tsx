@@ -38,6 +38,7 @@ interface RequestItem {
   codigoTrazabilidad: string | null
   odontologistId: string
   odontologistName: string
+  paciente?: string | null
   type: string
   status: string
   priority: string
@@ -69,6 +70,7 @@ function mapSolicitudToRequest(s: SolicitudFromDB): RequestItem {
     codigoTrazabilidad: (s as any).codigo_trazabilidad || null,
     odontologistId: '',
     odontologistName: s.odontologonombre || '-',
+    paciente: (s as any).paciente || null,
     type: s.tipo || 'Sin tipo',
     status: s.estado || 'pending',
     priority: s.prioridad || 'medium',
@@ -119,6 +121,8 @@ export default function SolicitudesPage() {
       if (
         !r.type.toLowerCase().includes(term) &&
         !r.odontologistName.toLowerCase().includes(term) &&
+        !(r.paciente || '').toLowerCase().includes(term) &&
+        !(r.codigoTrazabilidad || '').toLowerCase().includes(term) &&
         !r.id.toLowerCase().includes(term)
       )
         return false
@@ -545,14 +549,13 @@ export default function SolicitudesPage() {
               <table className="w-full text-left text-sm">
                 <thead>
                   <tr className="border-b border-border bg-secondary/30">
-                    <th className="px-4 py-3 font-medium text-muted-foreground">ID</th>
                     <th className="px-4 py-3 font-medium text-muted-foreground">Código trazabilidad</th>
                     <th className="px-4 py-3 font-medium text-muted-foreground">Tipo</th>
                     <th className="px-4 py-3 font-medium text-muted-foreground">Odontólogo</th>
+                    <th className="px-4 py-3 font-medium text-muted-foreground">Paciente</th>
                     <th className="px-4 py-3 font-medium text-muted-foreground">Prioridad</th>
                     <th className="px-4 py-3 font-medium text-muted-foreground">Estado</th>
                     <th className="px-4 py-3 font-medium text-muted-foreground">Progreso</th>
-                    <th className="px-4 py-3 font-medium text-muted-foreground">Asignado a</th>
                     <th className="px-4 py-3 text-right font-medium text-muted-foreground">Acciones</th>
                   </tr>
                 </thead>
@@ -563,17 +566,6 @@ export default function SolicitudesPage() {
                     return (
                       <tr key={req.id} className="transition-colors hover:bg-secondary/30">
                         <td className="px-4 py-4">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="font-mono text-xs text-primary hover:underline gap-1"
-                            onClick={() => handleExportSolicitudPDF(req.id, req.codigoTrazabilidad || req.id)}
-                          >
-                            <FileText className="size-3" />
-                            {req.id}
-                          </Button>
-                        </td>
-                        <td className="px-4 py-4">
                           {req.codigoTrazabilidad ? (
                             <span className="font-mono text-xs text-primary">{req.codigoTrazabilidad}</span>
                           ) : (
@@ -582,6 +574,7 @@ export default function SolicitudesPage() {
                         </td>
                         <td className="px-4 py-4 text-foreground">{req.type}</td>
                         <td className="px-4 py-4 text-muted-foreground">{req.odontologistName}</td>
+                        <td className="px-4 py-4 text-muted-foreground">{req.paciente ?? '-'}</td>
                         <td className="px-4 py-4">
                           <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${prioridad.color}`}>
                             {prioridad.label}
@@ -600,7 +593,6 @@ export default function SolicitudesPage() {
                             <span className="text-xs text-muted-foreground">{req.progress}%</span>
                           </div>
                         </td>
-                        <td className="px-4 py-4 text-muted-foreground">{req.assignedTo ?? '-'}</td>
                         <td className="px-4 py-4 text-right">
                           <DropdownMenu>
                             <DropdownMenuTrigger>
