@@ -17,6 +17,7 @@ export function MaterialesPageClient() {
   })
   const [materiales, setMateriales] = useState<any[]>([])
   const [saving, setSaving] = useState(false)
+  const [file, setFile] = useState<File | null>(null)
 
   useEffect(() => {
     (async () => {

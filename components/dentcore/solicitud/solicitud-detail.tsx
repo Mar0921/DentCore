@@ -1,8 +1,10 @@
 'use client'
 
+import * as React from 'react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { OrdenFabricacion } from './orden-fabricacion'
+import { cn } from '@/lib/utils'
 
 interface SolicitudDetailProps {
   solicitud: any
@@ -139,12 +141,13 @@ export function SolicitudDetailContent({ solicitud }: { solicitud: any }) {
                     )
                   }
                   if (typeof archivo === 'object' && archivo !== null) {
-                    const url = archivo.url || archivo.file_url || archivo.link
-                    const nombre = archivo.nombre || archivo.name || archivo.filename || 'Archivo'
-                    if (url) {
+                    const archivoObj = archivo as Record<string, unknown>
+                    const url = archivoObj.url || archivoObj.file_url || archivoObj.link
+                    const nombre = archivoObj.nombre || archivoObj.name || archivoObj.filename || 'Archivo'
+                    if (url && typeof url === 'string') {
                       return (
                         <a key={idx} href={url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline text-sm break-all">
-                          {nombre}
+                          {typeof nombre === 'string' ? nombre : 'Archivo'}
                         </a>
                       )
                     }

@@ -101,6 +101,14 @@ export default function EmpleadoSolicitudDetallePage() {
     buzon: any | null
   }>({ posAdaptacion: null, buzon: null })
   const [garantia, setGarantia] = useState<any | null>(null)
+  const [observaciones, setObservaciones] = useState<any[]>([])
+  const [nuevaObservacion, setNuevaObservacion] = useState('')
+  const [guardandoObservacion, setGuardandoObservacion] = useState(false)
+  const [catalogoMateriales, setCatalogoMateriales] = useState<any[]>([])
+  const [materialesSolicitud, setMaterialesSolicitud] = useState<any[]>([])
+  const [materialSel, setMaterialSel] = useState('')
+  const [guardandoMaterial, setGuardandoMaterial] = useState(false)
+  const [eliminandoMaterialId, setEliminandoMaterialId] = useState<string | null>(null)
 
   useEffect(() => {
     if (!id) return
@@ -178,30 +186,182 @@ export default function EmpleadoSolicitudDetallePage() {
   }, [solicitud])
 
   useEffect(() => {
-    if (!solicitud) return
-
-    async function loadGarantia() {
+    if (!solicitud) {
+      setObservaciones([])
+      return
+    }
+    let cancelled = false
+    async function loadObservaciones() {
       try {
-        const res = await fetch(`/api/documentos-garantia?solicitud_id=${encodeURIComponent(solicitud!.id)}`)
-        if (!res.ok) {
-          console.error('Error fetching garantia:', await res.text())
-          return
+        const res = await fetch(`/api/solicitud-observaciones?solicitud_id=${encodeURIComponent(solicitud!.id)}`)
+        if (res.ok) {
+          const result = await res.json()
+          if (!cancelled && Array.isArray(result?.data)) {
+            setObservaciones(result.data)
+            return
+          }
         }
-        const result = await res.json()
-        setGarantia(result.data)
       } catch (e) {
-        console.error('Error loading garantia:', e)
+        console.error('Error loading observaciones:', e)
+      }
+      // Fallback directo a Supabase
+      if (!cancelled) {
+        supabase
+          .from('solicitud_observaciones')
+          .select('id, texto, created_at')
+          .eq('solicitud_id', solicitud!.id)
+          .order('created_at', { ascending: true })
+          .then(({ data, error }) => {
+            if (cancelled) return
+            if (!error && data) {
+              setObservaciones(data)
+            }
+          })
       }
     }
 
-    loadGarantia()
+    loadObservaciones()
+    return () => {
+      cancelled = true
+    }
   }, [solicitud])
+
+  useEffect(() => {
+    if (!solicitud?.laboratorio_id) {
+      setCatalogoMateriales([])
+      return
+    }
+    let cancelled = false
+    supabase
+      .from('materiales')
+      .select('id, codigo, nombre, material, producto, numero_lote, marca_fabricante, proveedor')
+      .eq('laboratorio_id', solicitud.laboratorio_id)
+      .order('nombre')
+      .then(({ data, error }) => {
+        if (cancelled) return
+        if (!error && data) {
+          setCatalogoMateriales(data)
+        } else {
+          setCatalogoMateriales([])
+        }
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [solicitud?.laboratorio_id])
+
+  useEffect(() => {
+    if (!solicitud) {
+      setMaterialesSolicitud([])
+      return
+    }
+    let cancelled = false
+    supabase
+      .from('solicitud_materiales')
+      .select('id, material_id, material, producto, numero_lote, marca_fabricante, proveedor')
+      .eq('solicitud_id', solicitud.id)
+      .order('created_at', { ascending: true })
+      .then(({ data, error }) => {
+        if (cancelled) return
+        if (!error && data) {
+          setMaterialesSolicitud(data)
+        } else {
+          setMaterialesSolicitud([])
+        }
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [solicitud])
+
+  async function handleAgregarMaterial() {
+    const cat = catalogoMateriales.find((m) => m.id === materialSel)
+    if (!cat || !solicitud?.id || guardandoMaterial) return
+    setGuardandoMaterial(true)
+    try {
+      const { data, error } = await supabase
+        .from('solicitud_materiales')
+        .insert({
+          solicitud_id: solicitud.id,
+          material_id: cat.id,
+          material: cat.material || cat.nombre,
+          producto: cat.producto,
+          numero_lote: cat.numero_lote,
+          marca_fabricante: cat.marca_fabricante,
+          proveedor: cat.proveedor,
+        })
+        .select('id, material_id, material, producto, numero_lote, marca_fabricante, proveedor')
+        .single()
+      if (error) throw error
+      setMaterialesSolicitud((prev) => [...prev, data])
+      setMaterialSel('')
+    } catch (e: any) {
+      alert('Error al agregar material: ' + (e?.message || 'desconocido'))
+    } finally {
+      setGuardandoMaterial(false)
+    }
+  }
+
+  async function handleEliminarMaterial(id: string) {
+    if (eliminandoMaterialId) return
+    if (!confirm('¿Quitar este material de la solicitud?')) return
+    setEliminandoMaterialId(id)
+    try {
+      const { error } = await supabase.from('solicitud_materiales').delete().eq('id', id)
+      if (error) throw error
+      setMaterialesSolicitud((prev) => prev.filter((m) => m.id !== id))
+    } catch (e: any) {
+      alert('Error al quitar material: ' + (e?.message || 'desconocido'))
+    } finally {
+      setEliminandoMaterialId(null)
+    }
+  }
+
+  async function handleAgregarObservacion() {
+    if (!solicitud || guardandoObservacion) return
+    const texto = nuevaObservacion.trim()
+    if (!texto) return
+    setGuardandoObservacion(true)
+    try {
+      // Try API first
+      const res = await fetch('/api/solicitud-observaciones', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          solicitud_id: solicitud.id,
+          texto,
+        }),
+      })
+      if (res.ok) {
+        const result = await res.json()
+        if (result?.data) {
+          setObservaciones((prev) => [...prev, result.data])
+          setNuevaObservacion('')
+          setGuardandoObservacion(false)
+          return
+        }
+      }
+      // Fallback directo a Supabase
+      const { data, error } = await supabase
+        .from('solicitud_observaciones')
+        .insert({ solicitud_id: solicitud!.id, texto })
+        .select('id, texto, created_at')
+        .single()
+      if (error) throw error
+      setObservaciones((prev) => [...prev, data])
+      setNuevaObservacion('')
+    } catch (e: any) {
+      alert('Error al agregar observación: ' + e.message)
+    } finally {
+      setGuardandoObservacion(false)
+    }
+  }
 
   const selectedTeeth = useMemo(() => parseDientes(solicitud?.dientes), [solicitud?.dientes])
 
   const estadoOpt = ESTADO_OPTIONS.find((e) => e.value === solicitud?.estado)
   const prioridadOpt = PRIORIDAD_OPTIONS.find((p) => p.value === solicitud?.prioridad)
-  const faseSeleccionada = fases.find((f) => f.id === selectedFaseId ?? solicitud?.fase_id)
+  const faseSeleccionada = fases.find((f) => f.id === (selectedFaseId ?? solicitud?.fase_id))
   const faseEnEdicion = fases.find((f) => f.id === selectedFaseId)
   const progresoDerivado = useMemo(() => {
     if (!solicitud) return 0
@@ -510,8 +670,150 @@ export default function EmpleadoSolicitudDetallePage() {
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Documentos de la solicitud</CardTitle>
+            <CardTitle className="text-base">Materiales</CardTitle>
           </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <select
+                value={materialSel}
+                onChange={(e) => setMaterialSel(e.target.value)}
+                className="flex-1 h-10 rounded-lg border border-border bg-card px-3 text-sm text-foreground outline-none transition-colors focus:border-accent focus:ring-2 focus:ring-accent/30"
+                disabled={guardandoMaterial || catalogoMateriales.length === 0}
+              >
+                <option value="">
+                  {catalogoMateriales.length === 0 ? 'No hay materiales registrados en el laboratorio' : 'Seleccionar material...'}
+                </option>
+                {catalogoMateriales
+                  .filter((m) => !materialesSolicitud.some((x) => x.material_id === m.id))
+                  .map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {(m.codigo ? m.codigo + ' - ' : '') + (m.nombre || m.material || 'Material')}
+                      {m.numero_lote ? ' · Lote ' + m.numero_lote : ''}
+                    </option>
+                  ))}
+              </select>
+              <Button
+                onClick={handleAgregarMaterial}
+                disabled={guardandoMaterial || !materialSel}
+                className="sm:self-start"
+              >
+                {guardandoMaterial ? (
+                  <>
+                    <RefreshCw className="size-3 animate-spin mr-1" />
+                    Agregando…
+                  </>
+                ) : (
+                  'Agregar'
+                )}
+              </Button>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border">
+                    <th className="text-left py-2 px-2 text-xs text-muted-foreground font-medium">Material</th>
+                    <th className="text-left py-2 px-2 text-xs text-muted-foreground font-medium">Producto</th>
+                    <th className="text-left py-2 px-2 text-xs text-muted-foreground font-medium">Número de lote</th>
+                    <th className="text-left py-2 px-2 text-xs text-muted-foreground font-medium">Fabricante</th>
+                    <th className="text-left py-2 px-2 text-xs text-muted-foreground font-medium">Proveedor</th>
+                    <th className="text-left py-2 px-2 text-xs text-muted-foreground font-medium">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {materialesSolicitud.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="py-4 text-center text-sm text-muted-foreground">
+                        Sin materiales agregados
+                      </td>
+                    </tr>
+                  ) : (
+                    materialesSolicitud.map((m) => (
+                      <tr key={m.id} className="border-b border-border/50">
+                        <td className="py-2 px-2 text-foreground">{m.material || '—'}</td>
+                        <td className="py-2 px-2 text-foreground">{m.producto || '—'}</td>
+                        <td className="py-2 px-2 text-foreground">{m.numero_lote || '—'}</td>
+                        <td className="py-2 px-2 text-foreground">{m.marca_fabricante || '—'}</td>
+                        <td className="py-2 px-2 text-foreground">{m.proveedor || '—'}</td>
+                        <td className="py-2 px-2 whitespace-nowrap">
+                          <button
+                            type="button"
+                            onClick={() => handleEliminarMaterial(m.id)}
+                            disabled={eliminandoMaterialId === m.id}
+                            className="text-xs text-red-600 underline disabled:opacity-50"
+                          >
+                            {eliminandoMaterialId === m.id ? 'Quitando…' : 'Eliminar'}
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="space-y-4">
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <textarea
+                value={nuevaObservacion}
+                onChange={(e) => setNuevaObservacion(e.target.value)}
+                placeholder="Escribir observación..."
+                className="min-h-[80px] w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground outline-none transition-colors focus:border-accent focus:ring-2 focus:ring-accent/30"
+                disabled={guardandoObservacion}
+              />
+              <Button
+                onClick={handleAgregarObservacion}
+                disabled={guardandoObservacion || !nuevaObservacion.trim()}
+                className="sm:self-start"
+              >
+                {guardandoObservacion ? (
+                  <>
+                    <RefreshCw className="size-3 animate-spin mr-1" />
+                    Guardando…
+                  </>
+                ) : (
+                  'Agregar'
+                )}
+              </Button>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border">
+                    <th className="text-left py-2 px-2 text-xs text-muted-foreground font-medium">Fecha</th>
+                    <th className="text-left py-2 px-2 text-xs text-muted-foreground font-medium">Observación</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {observaciones.length === 0 ? (
+                    <tr>
+                      <td colSpan={2} className="py-4 text-center text-sm text-muted-foreground">
+                        Sin observaciones
+                      </td>
+                    </tr>
+                  ) : (
+                    [...observaciones]
+                      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+                      .map((obs) => (
+                        <tr key={obs.id} className="border-b border-border/50">
+                          <td className="py-2 px-2 align-top whitespace-nowrap text-xs text-muted-foreground">
+                            {obs.created_at ? new Date(obs.created_at).toLocaleString('es-ES') : '—'}
+                          </td>
+                          <td className="py-2 px-2 text-foreground whitespace-pre-wrap">{obs.texto || '—'}</td>
+                        </tr>
+                      ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
           <CardContent className="grid gap-3 sm:grid-cols-2">
             <div className="sm:col-span-2">
               <span className="text-xs text-muted-foreground">Encuesta posadaptación</span>

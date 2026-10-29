@@ -144,11 +144,11 @@ export default function SolicitudDetallePage() {
           .select('id, nombre, orden')
           .order('orden', { ascending: true })
 
-        if ((!data || data.length === 0) && solicitud.laboratorio_id) {
+        if ((!data || data.length === 0) && solicitud!.laboratorio_id) {
           const retry = await supabase
             .from('fases')
             .select('id, nombre, orden')
-            .eq('laboratorio_id', solicitud.laboratorio_id)
+            .eq('laboratorio_id', solicitud!.laboratorio_id)
             .order('orden', { ascending: true })
           ;({ data, error } = retry)
         }
@@ -168,7 +168,7 @@ export default function SolicitudDetallePage() {
 
     async function loadEncuestas() {
       try {
-        const res = await fetch(`/api/encuestas?solicitud_id=${encodeURIComponent(solicitud.id)}`)
+        const res = await fetch(`/api/encuestas?solicitud_id=${encodeURIComponent(solicitud!.id)}`)
         if (!res.ok) {
           console.error('Error fetching encuestas:', await res.text())
           return
@@ -191,7 +191,7 @@ export default function SolicitudDetallePage() {
 
     async function loadGarantia() {
       try {
-        const res = await fetch(`/api/documentos-garantia?solicitud_id=${encodeURIComponent(solicitud.id)}`)
+        const res = await fetch(`/api/documentos-garantia?solicitud_id=${encodeURIComponent(solicitud!.id)}`)
         if (!res.ok) {
           console.error('Error fetching garantia:', await res.text())
           return
