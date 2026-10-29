@@ -112,5 +112,5 @@ export function generateCodigoTrazabilidad(): string {
 export function formatFecha(fecha: { dia: string; mes: string; anio: string }): string {
   const dd = fecha.dia.padStart(2, '0')
   const mm = fecha.mes.padStart(2, '0')
-  return `${dd}/${mm}/${fecha.anio}`
+  return `${fecha.anio}-${mm}-${dd}`
 }

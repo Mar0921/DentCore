@@ -99,7 +99,7 @@ export function ChatWidget({ tipo, clienteId, laboratorioId, solicitudId }: Chat
         {mensajes.map((msg: any) => (
           <div key={msg.id} className={'flex ' + (msg.remitente_tipo === tipo ? 'justify-end' : 'justify-start')}>
             <div className={'max-w-[70%] p-2 rounded-lg text-xs ' + (msg.remitente_tipo === tipo ? 'bg-primary text-primary-foreground' : 'bg-muted')}>
-              <p>{msg.contenido}</p>
+                <p>{msg.contenido?.startsWith('Archivo: ') ? <a href={msg.contenido.replace('Archivo: ', '')} target='_blank' rel='noopener noreferrer' className='underline'>Ver archivo</a> : msg.contenido}</p>
               <p className='text-[10px] opacity-70 mt-1'>{new Date(msg.created_at).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}</p>
             </div>
           </div>

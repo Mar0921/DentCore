@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { MessageCircle, Send, Plus, User } from 'lucide-react'
+import { MessageCircle, Send, Plus, User, Paperclip } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 
 export default function ChatLaboratorioPageClient() {
@@ -57,6 +57,22 @@ export default function ChatLaboratorioPageClient() {
     setVista('conversaciones')
   }
 
+  const [archivo, setArchivo] = useState<File | null>(null)
+  const [enviandoArchivo, setEnviandoArchivo] = useState(false)
+
+  async function enviarArchivo(file: File) {
+    if (!conversacionActiva) return
+    setEnviandoArchivo(true)
+    try {
+      const safeName = file.name.replace(/[^a-zA-Z0-9.\-_]/g, '_')
+      const storagePath = `${conversacionActiva.id}/${Date.now()}-${safeName}`
+      const { error: upErr } = await supabase.storage.from('solicitudes-documentos').upload(storagePath, file)
+      if (upErr) throw upErr
+      const { data: { publicUrl } } = supabase.storage.from('solicitudes-documentos').getPublicUrl(storagePath)
+      await fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'enviar_mensaje', conversacion_id: conversacionActiva.id, remitente_tipo: 'laboratorio', remitente_id: laboratorioId, contenido: `Archivo: ${publicUrl}` }) })
+      cargarMensajes()
+    } catch (e) { console.error(e) } finally { setEnviandoArchivo(false); setArchivo(null) }
+  }
   async function enviarMensaje() {
     if (!mensaje.trim() || !conversacionActiva) return
     await fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'enviar_mensaje', conversacion_id: conversacionActiva.id, remitente_tipo: 'laboratorio', remitente_id: laboratorioId, contenido: mensaje }) })
@@ -106,14 +122,16 @@ export default function ChatLaboratorioPageClient() {
             {mensajes.map((msg: any) => (
               <div key={msg.id} className={'flex ' + (msg.remitente_tipo === 'laboratorio' || msg.remitente_tipo === 'empleado' ? 'justify-end' : 'justify-start')}>
                 <div className={'max-w-[70%] p-2 rounded-lg text-sm ' + (msg.remitente_tipo === 'laboratorio' || msg.remitente_tipo === 'empleado' ? 'bg-primary text-primary-foreground' : 'bg-muted')}>
-                  <p>{msg.contenido}</p>
+                  <p>{msg.contenido?.startsWith('Archivo: ') ? <a href={msg.contenido.replace('Archivo: ', '')} target='_blank' rel='noopener noreferrer' className='underline'>Ver archivo</a> : msg.contenido}</p>
                   <p className='text-xs opacity-70 mt-1'>{new Date(msg.created_at).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}</p>
                 </div>
               </div>
             ))}
           </CardContent>
           {conversacionActiva && (
-            <div className='p-3 border-t flex gap-2'>
+            <div className='p-3 border-t flex gap-2 items-center'>
+              <input type='file' id='chat-file' className='hidden' onChange={(e) => { const f = e.target.files?.[0]; if (f) enviarArchivo(f) }} />
+              <Button variant='outline' size='icon' onClick={() => document.getElementById('chat-file')?.click()} disabled={enviandoArchivo}><Paperclip className='h-4 w-4' /></Button>
               <Input value={mensaje} onChange={(e) => setMensaje(e.target.value)} placeholder='Escribe un mensaje...' onKeyPress={(e) => e.key === 'Enter' && enviarMensaje()} />
               <Button onClick={enviarMensaje}><Send className='h-4 w-4' /></Button>
             </div>

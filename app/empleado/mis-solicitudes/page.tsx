@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { Search, Eye } from 'lucide-react'
+import { Search, Eye, Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
@@ -76,9 +76,14 @@ export default function EmpleadoSolicitudesPage() {
   return (
     <AppShell sidebar="empleado">
       <div className="space-y-4">
-        <div>
-          <h1 className="font-heading text-2xl font-bold text-primary">Solicitudes</h1>
-          <p className="text-sm text-muted-foreground">Solicitudes registradas en el laboratorio</p>
+        <div className="flex items-center justify-between gap-2">
+          <div>
+            <h1 className="font-heading text-2xl font-bold text-primary">Solicitudes</h1>
+            <p className="text-sm text-muted-foreground">Solicitudes registradas en el laboratorio</p>
+          </div>
+          <Button className="gap-2" onClick={() => router.push('/empleado/mis-solicitudes/nueva')}>
+            <Plus className="size-4" /> Nueva solicitud
+          </Button>
         </div>
 
         <div className="relative">

@@ -27,6 +27,37 @@ export function PrescriptionForm({
   const [activeIndex, setActiveIndex] = useState(0)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [solicitudEnviada, setSolicitudEnviada] = useState(false)
+  const [clients, setClients] = useState<{ id: string; nombre: string; email?: string; telefono?: string }[]>([])
+  const [selectedClientId, setSelectedClientId] = useState<string>('')
+
+  useEffect(() => {
+    async function loadClients() {
+      try {
+        const { data } = await supabase.from('cliente').select('id, nombre, email, telefono').order('nombre')
+        setClients(data || [])
+      } catch {
+        // ignore
+      }
+    }
+    loadClients()
+  }, [])
+
+  const handleSelectClient = (clientId: string) => {
+    setSelectedClientId(clientId)
+    const c = clients.find((x) => x.id === clientId)
+    if (!c) return
+    setSolicitudes((prev) =>
+      prev.map((s) => ({
+        ...s,
+        formData: {
+          ...s.formData,
+          odontologo: c.nombre || s.formData.odontologo,
+          correo: c.email || s.formData.correo,
+          telefono: c.telefono || s.formData.telefono,
+        },
+      })),
+    )
+  }
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -274,7 +305,7 @@ export function PrescriptionForm({
               idPrefix={`sol-${solicitud.id}`}
               onUpdate={(updates) => updateSolicitud(index, updates)}
               onFormDataChange={(updates) => updateFormData(index, updates)}
-              odontologoPrecargado={odontologoPrecargado}
+              odontologoPrecargado={selectedClientId ? undefined : odontologoPrecargado}
             />
           </div>
         </div>

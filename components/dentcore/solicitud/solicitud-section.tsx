@@ -681,7 +681,7 @@ export function SolicitudSection({
                 />
                 <Input
                   type="number"
-                  min="2000"
+                  min="2026"
                   max="2100"
                   value={formData.fechaElaboracion.anio}
                   onChange={(e) => onFormDataChange({ fechaElaboracion: { ...formData.fechaElaboracion, anio: e.target.value } })}
@@ -710,7 +710,7 @@ export function SolicitudSection({
                 />
                 <Input
                   type="number"
-                  min="2000"
+                  min="2026"
                   max="2100"
                   value={formData.fechaEntrega.anio}
                   onChange={(e) => onFormDataChange({ fechaEntrega: { ...formData.fechaEntrega, anio: e.target.value } })}

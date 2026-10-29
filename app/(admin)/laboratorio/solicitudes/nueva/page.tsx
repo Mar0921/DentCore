@@ -64,7 +64,7 @@ export default function NuevaSolicitudPage() {
 
   return (
     <div className="space-y-4">
-      <PrescriptionForm odontologoPrecargado={odontologoPrecargado} />
+      <PrescriptionForm           odontologoPrecargado={undefined} />
       <ProductosSelector />
     </div>
   )
