@@ -1,10 +1,10 @@
 import { AppShell } from '@/components/dentcore/app-shell'
-import CalendarioPageClient from '@/components/dentcore/calendario/calendario-page-client'
+import CalendarioSolicitudesClient from '@/components/dentcore/solicitud/calendario-solicitudes-client'
 
 export default function CalendarioPage() {
   return (
     <AppShell sidebar="laboratorio">
-      <CalendarioPageClient />
+      <CalendarioSolicitudesClient modo="admin" />
     </AppShell>
   )
 }

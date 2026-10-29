@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useMemo } from 'react'
+import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { supabase } from '@/lib/supabase'
@@ -85,6 +86,7 @@ function normalizeDate(dateStr: string): string | null {
 }
 
 export default function CalendarioSolicitudesClient({ modo = 'empleado' }: { modo?: 'admin' | 'empleado' }) {
+  const router = useRouter()
   const [currentDate, setCurrentDate] = useState(new Date())
   const [solicitudes, setSolicitudes] = useState<SolicitudCalendario[]>([])
   const [loading, setLoading] = useState(true)
@@ -204,7 +206,7 @@ export default function CalendarioSolicitudesClient({ modo = 'empleado' }: { mod
   }, [yearActual, mesActual, diasEnMes, diasPrevios])
 
   const todayKey = useMemo(() => dateToLocalKey(new Date()), [])
-  const solicitudesDelDia = selectedDate ? solicitudesPorDia[selectedDate] || [] : solicitudesPorDia[todayKey] || []
+  const solicitudesDelDia = solicitudes
 
   useEffect(() => {
     if (!selectedDate) {
@@ -364,7 +366,8 @@ export default function CalendarioSolicitudesClient({ modo = 'empleado' }: { mod
                       return (
                       <div
                         key={s.id}
-                        className={`border-l-4 rounded-lg border p-3 ${colorClass.card}`}
+                        className={`border-l-4 rounded-lg border p-3 cursor-pointer ${colorClass.card}`}
+                        onClick={() => router.push(modo === 'empleado' ? `/empleado/mis-solicitudes/${s.id}` : `/laboratorio/solicitudes/${s.id}`)}
                       >
                         <div className="flex items-start justify-between">
                           <div className="space-y-1">

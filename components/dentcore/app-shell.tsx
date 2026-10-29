@@ -46,6 +46,7 @@ import {
   FolderOpen,
   AlertCircle,
   PenTool,
+  Image,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -72,7 +73,7 @@ const mainNavItems = [
 const adminNavItems = [
   { label: 'Dashboard', href: '/laboratorio', active: false },
   { label: 'Clientes', href: '/laboratorio/clientes', active: false },
-  { label: 'AnÃ¡lisis', href: '/laboratorio/analisis', active: false },
+  { label: 'Análisis', href: '/laboratorio/analisis', active: false },
   { label: 'Productos', href: '/laboratorio/productos', active: false },
   { label: 'Empleados', href: '/laboratorio/empleados', active: false },
   { label: 'Solicitudes', href: '/laboratorio/solicitudes', active: false },
@@ -106,6 +107,7 @@ const empleadoItems = [
   { label: 'Clientes', icon: Users, href: '/empleado/clientes', activePrefix: '/empleado/clientes' },
    { label: 'Fases', icon: GitBranch, href: '/empleado/fases', activePrefix: '/empleado/fases' },
   { label: 'Calendario', icon: CalendarDays, href: '/empleado/calendario', activePrefix: '/empleado/calendario' },
+  { label: 'Evidencias', icon: Image, href: '/empleado/evidencias', activePrefix: '/empleado/evidencias' },
   { label: 'Mi perfil', icon: UserRound, href: '/empleado/mi-perfil', activePrefix: '/empleado/mi-perfil' },
 ]
 
@@ -118,7 +120,7 @@ const laboratorioItems = [
   { label: 'Incidencias y calidad', icon: AlertTriangle, href: '/laboratorio/incidencias', activePrefix: '/laboratorio/incidencias' },
   { label: 'CRM', icon: MessageCircleQuestion, href: '/laboratorio/crm', activePrefix: '/laboratorio/crm' },
   { label: 'Archivos del laboratorio', icon: FolderOpen, href: '/laboratorio/archivos', activePrefix: '/laboratorio/archivos' },
-  { label: 'Materiales', icon: Package, href: '/laboratorio/materiales', activePrefix: '/laboratorio/materiales' },
+  { label: 'Evidencias', icon: Image, href: '/laboratorio/evidencias', activePrefix: '/laboratorio/evidencias' },
   { label: 'Firmas', icon: PenTool, href: '/laboratorio/firmas', activePrefix: '/laboratorio/firmas' },
 ]
 
@@ -303,18 +305,29 @@ export function AppShell({ children, sidebar = 'trabajos', showSidebar = true }:
         {/* Main Navigation */}
         <nav className="flex items-center gap-0.5 border-t border-border px-4">
           {topNav.map((item) => (
-            <Link
-              key={item.label}
-              href={item.href}
-              className={cn(
-                'px-4 py-2 text-sm font-medium transition-colors',
-                item.active
-                  ? 'bg-primary text-primary-foreground'
-                  : 'text-muted-foreground hover:text-foreground hover:bg-secondary',
+            <span key={item.label} className="flex items-center gap-1">
+              <Link
+                href={item.href}
+                className={cn(
+                  'px-4 py-2 text-sm font-medium transition-colors',
+                  item.active
+                    ? 'bg-primary text-primary-foreground'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-secondary',
+                )}
+              >
+                {item.label}
+              </Link>
+              {item.label === 'Solicitudes' && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 px-2 text-xs"
+                  onClick={() => router.push('/calendario')}
+                >
+                  Calendario
+                </Button>
               )}
-            >
-              {item.label}
-            </Link>
+            </span>
           ))}
           <div className="ml-auto flex items-center gap-1">
             <Button variant="ghost" size="icon" className="size-8" onClick={handleLogout}>
@@ -343,7 +356,7 @@ export function AppShell({ children, sidebar = 'trabajos', showSidebar = true }:
                 <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
                 <input
                   type="text"
-                  placeholder="Buscar trabajo por cÃ³digo"
+                  placeholder="Buscar trabajo por código"
                   className="h-9 w-full rounded-lg border border-border bg-background pl-9 pr-3 text-sm outline-none transition-colors placeholder:text-muted-foreground/70 focus:border-accent focus:ring-2 focus:ring-accent/30"
                 />
               </div>

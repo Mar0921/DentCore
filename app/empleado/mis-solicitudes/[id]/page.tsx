@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { DentalChart } from '@/components/dentcore/solicitud/dental-chart'
+import { FasesFabricacion } from '@/components/dentcore/laboratorio/fases-fabricacion'
 import { ChevronLeft, RefreshCw, Save, X } from 'lucide-react'
 import { AppShell } from '@/components/dentcore/app-shell'
 import type { ToothStatus } from '@/components/dentcore/solicitud/solicitud-types'
@@ -90,6 +91,7 @@ export default function EmpleadoSolicitudDetallePage() {
   const [solicitud, setSolicitud] = useState<SolicitudLite | null>(null)
   const [fases, setFases] = useState<FaseLite[]>([])
   const [loading, setLoading] = useState(true)
+  const [productoId, setProductoId] = useState<string | null>(null)
 
   const SELECT_CLASS =
     "h-10 w-full rounded-lg border border-border bg-card px-3 text-sm text-foreground outline-none transition-colors focus:border-accent focus:ring-2 focus:ring-accent/30"
@@ -161,6 +163,31 @@ export default function EmpleadoSolicitudDetallePage() {
     }
     loadFases()
   }, [solicitud])
+
+  useEffect(() => {
+    if (!solicitud?.laboratorio_id || !solicitud.tipo) {
+      setProductoId(null)
+      return
+    }
+    async function resolveProductoId() {
+      try {
+        const { data, error } = await supabase
+          .from('productos')
+          .select('id')
+          .eq('laboratorio_id', solicitud.laboratorio_id)
+          .eq('categoria', solicitud.tipo)
+          .limit(1)
+        if (!error && data && data.length > 0) {
+          setProductoId(data[0].id)
+        } else {
+          setProductoId(null)
+        }
+      } catch {
+        setProductoId(null)
+      }
+    }
+    resolveProductoId()
+  }, [solicitud?.laboratorio_id, solicitud?.tipo])
 
   useEffect(() => {
     if (!solicitud) return
@@ -751,6 +778,141 @@ export default function EmpleadoSolicitudDetallePage() {
                 </tbody>
               </table>
             </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Fases de fabricación</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <FasesFabricacion
+              solicitudId={solicitud.id}
+              productoId={productoId}
+              laboratorioId={solicitud.laboratorio_id || undefined}
+              dientes={solicitud.dientes || undefined}
+              cantidad={1}
+              onSave={async (fase) => {
+                if (!fase.faseId || !solicitud.id || !solicitud.laboratorio_id) return
+                try {
+                  let archivoUrl: string | null = null
+                  let nombreArchivo: string | null = null
+                  let tipoMime: string | null = null
+                  let tamañoBytes: number | null = null
+
+                  if (fase.evidenciaFile) {
+                    const bytes = await fase.evidenciaFile.arrayBuffer()
+                    const fileBuffer = new Uint8Array(bytes)
+                    const filePath = `fases-evidencias/${solicitud.laboratorio_id}/${solicitud.id}/${Date.now()}_${fase.evidenciaFile.name.replace(/[^a-zA-Z0-9_.-]/g, '_')}`
+
+                    const { error: uploadError } = await supabase.storage
+                      .from('fases-evidencias')
+                      .upload(filePath, fileBuffer, {
+                        contentType: fase.evidenciaFile.type,
+                        upsert: true,
+                      })
+
+                    if (uploadError) {
+                      throw new Error('Error al subir la evidencia a storage: ' + uploadError.message)
+                    }
+
+                    const { data: publicUrlData } = supabase.storage
+                      .from('fases-evidencias')
+                      .getPublicUrl(filePath)
+
+                    archivoUrl = publicUrlData?.publicUrl || null
+                    nombreArchivo = fase.evidenciaFile.name
+                    tipoMime = fase.evidenciaFile.type
+                    tamañoBytes = fase.evidenciaFile.size
+                  }
+
+                  // Obtener empleado actual de la sesión
+                  const { data: { user } } = await supabase.auth.getUser()
+                  let empleadoId: string | null = null
+                  if (user) {
+                    const { data: emp } = await supabase
+                      .from('empleados')
+                      .select('id')
+                      .eq('email', user.email || '')
+                      .eq('laboratorio_id', solicitud.laboratorio_id)
+                      .maybeSingle()
+                    if (emp) empleadoId = emp.id
+                  }
+
+                  // Guardar/actualizar solicitud_fases
+                  const { data: existingSf, error: findSfErr } = await supabase
+                    .from('solicitud_fases')
+                    .select('id')
+                    .eq('solicitud_id', solicitud.id)
+                    .eq('producto_fase_id', fase.productoFaseId)
+                    .maybeSingle()
+                  if (findSfErr) throw findSfErr
+
+                  const sfPayload: any = {
+                    solicitud_id: solicitud.id,
+                    producto_fase_id: fase.productoFaseId,
+                    estado: fase.estado,
+                    realizado_por: fase.empleadoNombre || null,
+                    fecha_finalizacion: fase.fechaFinalizacion || null,
+                    fecha_prueba: fase.fechaPrueba || null,
+                  }
+
+                  if (existingSf) {
+                    await supabase
+                      .from('solicitud_fases')
+                      .update({
+                        estado: fase.estado,
+                        realizado_por: fase.empleadoNombre || null,
+                        fecha_finalizacion: fase.fechaFinalizacion || null,
+                        fecha_prueba: fase.fechaPrueba || null,
+                      })
+                      .eq('id', existingSf.id)
+                  } else {
+                    await supabase.from('solicitud_fases').insert(sfPayload)
+                  }
+
+                  // Guardar/actualizar evidencia en fases_evidencias
+                  if (fase.evidenciaFile && archivoUrl) {
+                    const { data: existingEv, error: findEvErr } = await supabase
+                      .from('fases_evidencias')
+                      .select('id')
+                      .eq('solicitud_id', solicitud.id)
+                      .eq('producto_fase_id', fase.productoFaseId)
+                      .maybeSingle()
+                    if (findEvErr) throw findEvErr
+
+                    const evPayload: any = {
+                      solicitud_id: solicitud.id,
+                      producto_fase_id: fase.productoFaseId,
+                      fase_id: fase.faseId,
+                      laboratorio_id: solicitud.laboratorio_id,
+                      empleado_id: empleadoId || null,
+                      archivo_url: archivoUrl,
+                      nombre_archivo: nombreArchivo || '',
+                      tipo_mime: tipoMime || null,
+                      tamaño_bytes: tamañoBytes || null,
+                    }
+
+                    if (existingEv) {
+                      await supabase
+                        .from('fases_evidencias')
+                        .update({
+                          archivo_url: archivoUrl,
+                          nombre_archivo: nombreArchivo || '',
+                          tipo_mime: tipoMime || null,
+                          tamaño_bytes: tamañoBytes || null,
+                          creado_en: new Date().toISOString(),
+                        })
+                        .eq('id', existingEv.id)
+                    } else {
+                      await supabase.from('fases_evidencias').insert(evPayload)
+                    }
+                  }
+                } catch (e: any) {
+                  alert('Error al guardar la fase: ' + (e?.message || 'desconocido'))
+                }
+              }}
+            />
           </CardContent>
         </Card>
 

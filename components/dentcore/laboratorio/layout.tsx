@@ -38,6 +38,8 @@ import {
   FolderOpen,
   Edit,
   Trash2 as TrashIcon,
+  Image,
+  PenTool,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -73,7 +75,7 @@ const laboratorioItems = [
   { label: 'Implantes', icon: Smile, href: '/laboratorio/implantes' },
   { label: 'CRM', icon: MessageCircleQuestion, href: '/laboratorio/crm' },
   { label: 'Firmas', icon: PenTool, href: '/laboratorio/firmas' },
-  { label: 'Materiales', icon: Package, href: '/laboratorio/materiales' },
+  { label: 'Evidencias', icon: Image, href: '/laboratorio/evidencias' },
 ]
 
 interface LaboratorioLayoutProps {
