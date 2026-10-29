@@ -149,7 +149,7 @@ export function ClientesTable() {
             Administra las clínicas y clientes del laboratorio
           </p>
         </div>
-        <Button className="gap-2 rounded-full" onClick={() => router.push('/registro-cliente')}>
+        <Button className="gap-2 rounded-full" onClick={() => router.push('/registro-cliente?from=lab')}>
           <Plus className="size-4" />
           Nuevo cliente
         </Button>

@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from "react"
+import { useSearchParams } from "next/navigation"
 import { supabase } from "@/lib/supabase"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -8,6 +9,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { User, Mail, Phone, Lock, CheckCircle, AlertCircle } from "lucide-react"
 
 export function RegistroClientePageClient() {
+  const searchParams = useSearchParams()
+  const fromParam = searchParams.get('from') || (typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('from') : null)
+  const fromLab = fromParam === 'lab'
+  const fromEmpleado = fromParam === 'empleado'
+  const fromAdmin = fromLab || fromEmpleado
+  const backPath = fromEmpleado ? '/empleado/clientes' : '/laboratorio/clientes'
   const [formData, setFormData] = useState({
     nombre: "",
     email: "",
@@ -91,10 +98,10 @@ export function RegistroClientePageClient() {
             </div>
             <h2 className="font-heading text-xl font-bold text-primary">¡Registro exitoso!</h2>
             <p className="mt-2 text-sm text-muted-foreground">
-              Tu cuenta ha sido creada. Ahora puedes iniciar sesión.
+              {fromAdmin ? 'El cliente ha sido creado.' : 'Tu cuenta ha sido creada. Ahora puedes iniciar sesión.'}
             </p>
-            <Button className="mt-4" render={<a href="/iniciar-sesion" />}>
-              Iniciar sesión
+            <Button className="mt-4" render={<a href={fromAdmin ? backPath : '/iniciar-sesion'} />}>
+              {fromAdmin ? 'Volver' : 'Iniciar sesión'}
             </Button>
           </CardContent>
         </Card>

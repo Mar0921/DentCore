@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { Search, Eye } from 'lucide-react'
+import { Search, Eye, Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -70,11 +70,17 @@ export default function EmpleadoClientesPage() {
   return (
     <AppShell sidebar="empleado">
       <div className="space-y-4">
-        <div>
-          <h1 className="font-heading text-2xl font-bold text-primary">Clientes</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            {loading ? 'Cargando...' : `Mostrando ${filtered.length} cliente(s)`}
-          </p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="font-heading text-2xl font-bold text-primary">Clientes</h1>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {loading ? 'Cargando...' : `Mostrando ${filtered.length} cliente(s)`}
+            </p>
+          </div>
+          <Button className="gap-2 rounded-full" onClick={() => router.push('/registro-cliente?from=empleado')}>
+            <Plus className="size-4" />
+            Nuevo cliente
+          </Button>
         </div>
 
         <div className="relative">
