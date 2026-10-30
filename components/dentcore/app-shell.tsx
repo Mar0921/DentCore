@@ -138,6 +138,7 @@ export function AppShell({ children, sidebar = 'trabajos', showSidebar = true }:
   const [invitadoNombre, setInvitadoNombre] = useState<string>('')
   const [invitadoEmail, setInvitadoEmail] = useState<string>('')
   const [cartaPendiente, setCartaPendiente] = useState(false)
+  const [urgentSolicitudes, setUrgentSolicitudes] = useState<any[]>([])
   const [supportOpen, setSupportOpen] = useState(false)
   const pathname = usePathname()
   const router = useRouter()
@@ -179,6 +180,17 @@ export function AppShell({ children, sidebar = 'trabajos', showSidebar = true }:
           }
         })
       }
+    } else if (sidebar === 'empleado' || sidebar === 'laboratorio') {
+      const now = new Date()
+      const limit = new Date(now.getTime() + 2 * 24 * 60 * 60 * 1000)
+      supabase.from('solicitudes').select('id, codigo_trazabilidad, fecha_entrega').then(({ data }) => {
+        const list = (data || []).filter((s: any) => {
+          if (!s.fecha_entrega) return false
+          const d = new Date(s.fecha_entrega)
+          return d <= limit
+        })
+        setUrgentSolicitudes(list)
+      })
     }
   }, [sidebar])
 
@@ -358,6 +370,16 @@ export function AppShell({ children, sidebar = 'trabajos', showSidebar = true }:
       {sidebar === 'invitado' && cartaPendiente && (
         <div className="bg-yellow-500 text-black text-center py-2 font-semibold">
           Pendiente por firmar carta convenio
+        </div>
+      )}
+      { (sidebar === 'empleado' || sidebar === 'laboratorio') && urgentSolicitudes.length > 0 && (
+        <div className="bg-red-600 text-white text-center py-2 font-semibold flex items-center justify-center gap-2">
+          Alerta: {urgentSolicitudes.length} solicitud(es) con entrega en 2 días o menos:
+          {urgentSolicitudes.map((s) => (
+            <a key={s.id} href={sidebar === 'laboratorio' ? `/laboratorio/solicitudes/${s.id}` : `/empleado/mis-solicitudes/${s.id}`} className="underline hover:text-yellow-200">
+              {s.codigo_trazabilidad || s.id}
+            </a>
+          ))}
         </div>
       )}
       <div className="flex">
