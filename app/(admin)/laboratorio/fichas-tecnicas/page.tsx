@@ -1,7 +1,7 @@
 "use client"
 
 import { useRouter, useSearchParams } from "next/navigation"
-import { useState, useEffect } from "react"
+import { useState, useEffect, Suspense } from "react"
 import {
   FileText,
   ArrowLeft,
@@ -54,6 +54,14 @@ interface SolicitudCompleta {
 }
 
 export default function FichasTecnicasPage() {
+  return (
+    <Suspense fallback={<div className="p-6">Cargando...</div>}>
+      <FichasTecnicasPageInner />
+    </Suspense>
+  )
+}
+
+function FichasTecnicasPageInner() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const solicitudIdParam = searchParams.get("solicitud_id")
