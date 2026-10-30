@@ -137,6 +137,7 @@ export function AppShell({ children, sidebar = 'trabajos', showSidebar = true }:
   const [userEmail, setUserEmail] = useState<string>("")
   const [invitadoNombre, setInvitadoNombre] = useState<string>('')
   const [invitadoEmail, setInvitadoEmail] = useState<string>('')
+  const [cartaPendiente, setCartaPendiente] = useState(false)
   const [supportOpen, setSupportOpen] = useState(false)
   const pathname = usePathname()
   const router = useRouter()
@@ -167,8 +168,19 @@ export function AppShell({ children, sidebar = 'trabajos', showSidebar = true }:
   }
 
   useEffect(() => {
-    loadUserInfo()
-  }, [])
+    if (sidebar === 'invitado') {
+      const email = localStorage.getItem('labUserEmail')
+      if (email) {
+        supabase.from('cliente').select('id').eq('email', email).maybeSingle().then(({ data: cli }) => {
+          if (cli?.id) {
+            supabase.from('cartas_convenio').select('firmado').eq('cliente_id', cli.id).maybeSingle().then(({ data: carta }) => {
+              setCartaPendiente(!carta?.firmado)
+            })
+          }
+        })
+      }
+    }
+  }, [sidebar])
 
   function loadUserInfo() {
     if (typeof window !== 'undefined') {
@@ -317,16 +329,16 @@ export function AppShell({ children, sidebar = 'trabajos', showSidebar = true }:
               >
                 {item.label}
               </Link>
-              {item.label === 'Solicitudes' && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 px-2 text-xs"
-                  onClick={() => router.push('/calendario')}
-                >
-                  Calendario
-                </Button>
-              )}
+               {item.label === 'Solicitudes' && sidebar !== 'invitado' && (
+                 <Button
+                   variant="ghost"
+                   size="sm"
+                   className="h-7 px-2 text-xs"
+                   onClick={() => router.push('/calendario')}
+                 >
+                   Calendario
+                 </Button>
+               )}
             </span>
           ))}
           <div className="ml-auto flex items-center gap-1">
@@ -343,6 +355,11 @@ export function AppShell({ children, sidebar = 'trabajos', showSidebar = true }:
         </nav>
       </header>
 
+      {sidebar === 'invitado' && cartaPendiente && (
+        <div className="bg-yellow-500 text-black text-center py-2 font-semibold">
+          Pendiente por firmar carta convenio
+        </div>
+      )}
       <div className="flex">
         {shouldShowSidebar && (
           <aside

@@ -3,7 +3,7 @@ import { CartaConvenioInvitadoClient } from '@/components/dentcore/invitado/cart
 
 export default function CartaConvenioInvitadoPage() {
   return (
-    <AppShell sidebar="invitado">
+    <AppShell sidebar="invitado" showSidebar={false}>
       <CartaConvenioInvitadoClient />
     </AppShell>
   )

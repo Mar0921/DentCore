@@ -8,7 +8,10 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { DentalChart } from '@/components/dentcore/solicitud/dental-chart'
-import { ChevronLeft, FileText } from 'lucide-react'
+import { FichaTecnicaColadoUcla } from '@/components/dentcore/fichas-tecnicas/ficha-tecnica-colado-ucla'
+import { FichaTecnicaCeramicaEncia } from '@/components/dentcore/fichas-tecnicas/ficha-tecnica-ceramica-encia'
+import { FichaTecnicaGenerica } from '@/components/dentcore/fichas-tecnicas/ficha-tecnica-generica'
+import { ChevronLeft, FileText, Eye, X } from 'lucide-react'
 import { AppShell } from '@/components/dentcore/app-shell'
 import type { ToothStatus } from '@/components/dentcore/solicitud/solicitud-types'
 import { exportPageToPDF, getPageTitle } from '@/lib/pdf-export'
@@ -17,6 +20,28 @@ interface FaseLite {
   id: string
   nombre: string
   orden: number
+}
+
+interface CampoFicha {
+  label: string
+  value: string
+}
+
+interface SeccionFicha {
+  titulo: string
+  campos: CampoFicha[]
+}
+
+interface FichaRegistro {
+  id: string
+  nombre?: string | null
+  tipo?: string | null
+  fecha?: string | null
+  secciones?: SeccionFicha[] | null
+  nombre_archivo?: string | null
+  archivo_url?: string | null
+  tipo_mime?: string | null
+  created_at?: string | null
 }
 
 interface SolicitudLite {
@@ -102,6 +127,16 @@ function parseDientes(dientes?: string | null): number[] {
   ).sort((a, b) => a - b)
 }
 
+function formatFecha(value?: string | null) {
+  if (!value) return '—'
+  const d = new Date(value)
+  return isNaN(d.getTime()) ? value : d.toLocaleDateString('es-ES')
+}
+
+function tieneSecciones(ficha: FichaRegistro) {
+  return Array.isArray(ficha.secciones) && ficha.secciones.length > 0
+}
+
 export default function InvitadoSolicitudDetallePage() {
   const router = useRouter()
   const params = useParams<{ id: string }>()
@@ -143,6 +178,8 @@ export default function InvitadoSolicitudDetallePage() {
   const [buzonError, setBuzonError] = useState('')
   const [buzonLoading, setBuzonLoading] = useState(false)
   const [garantia, setGarantia] = useState<any | null>(null)
+  const [fichas, setFichas] = useState<FichaRegistro[]>([])
+  const [fichaVista, setFichaVista] = useState<FichaRegistro | null>(null)
 
   useEffect(() => {
     if (!id) return
@@ -235,6 +272,44 @@ export default function InvitadoSolicitudDetallePage() {
     loadGarantia()
   }, [solicitud?.id])
 
+  useEffect(() => {
+    if (!solicitud) {
+      setFichas([])
+      return
+    }
+    const solicitudId = solicitud.id
+    let cancelled = false
+
+    async function loadFichas() {
+      try {
+        const res = await fetch(`/api/fichas-tecnicas?solicitud_id=${encodeURIComponent(solicitudId)}`)
+        if (!res.ok) {
+          console.error('Error fetching fichas tecnicas:', await res.text())
+          return
+        }
+        const result = await res.json()
+        if (!cancelled) setFichas(result.data || [])
+      } catch (e) {
+        console.error('Error loading fichas tecnicas:', e)
+      }
+    }
+
+    loadFichas()
+    return () => {
+      cancelled = true
+    }
+  }, [solicitud?.id])
+
+  // Cerrar el modal de ficha con Escape
+  useEffect(() => {
+    if (!fichaVista) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setFichaVista(null)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [fichaVista])
+
   const selectedTeeth = useMemo(() => parseDientes(solicitud?.dientes), [solicitud?.dientes])
 
   const estadoOpt = ESTADO_OPTIONS.find((e) => e.value === solicitud?.estado)
@@ -248,7 +323,7 @@ export default function InvitadoSolicitudDetallePage() {
       return Math.round((fase.orden / maxOrden) * 100)
     }
     return solicitud.progreso ?? 0
-  }, [solicitud?.fase_id, solicitud?.progreso, fases])
+  }, [solicitud, fases])
 
   const handlePosSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -363,6 +438,13 @@ export default function InvitadoSolicitudDetallePage() {
       </AppShell>
     )
   }
+
+  // Datos para el visor de fichas (solo lectura)
+  const codigoRaw = solicitud.codigo_trazabilidad || ''
+  const codigoPartes = codigoRaw.split('-')
+  const codigoTrazabilidadFicha =
+    codigoPartes.length >= 2 ? `${codigoPartes[0]}-${codigoPartes[1]}` : codigoRaw
+  const dientesFicha = selectedTeeth.map(String)
 
   return (
     <AppShell sidebar="invitado" showSidebar={false}>
@@ -531,6 +613,72 @@ export default function InvitadoSolicitudDetallePage() {
 
         <Card>
           <CardHeader>
+            <CardTitle className="text-base">Fichas técnicas</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {fichas.length > 0 ? (
+              <ul className="divide-y divide-border">
+                {fichas.map((ficha) => {
+                  const nombre = ficha.nombre || ficha.nombre_archivo || 'Ficha técnica'
+                  const fecha = formatFecha(ficha.fecha || ficha.created_at)
+                  const conSecciones = tieneSecciones(ficha)
+                  const href =
+                    ficha.archivo_url ||
+                    (ficha.nombre_archivo?.startsWith('http') ? ficha.nombre_archivo : null)
+                  const archivoVisible = isViewableDocument(ficha.nombre_archivo, ficha.tipo_mime)
+
+                  return (
+                    <li
+                      key={ficha.id}
+                      className="flex flex-col gap-2 py-2 sm:flex-row sm:items-center sm:justify-between"
+                    >
+                      <div className="flex min-w-0 items-center gap-3">
+                        <FileText className="size-4 shrink-0 text-muted-foreground" />
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium text-foreground">{nombre}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {ficha.tipo ? `${ficha.tipo} · ` : ''}
+                            {fecha}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {conSecciones ? (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="gap-2"
+                            onClick={() => setFichaVista(ficha)}
+                          >
+                            <Eye className="size-4" />
+                            Ver
+                          </Button>
+                        ) : href ? (
+                          <a
+                            href={href}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-xs text-accent underline"
+                          >
+                            {archivoVisible ? 'Abrir' : 'Descargar'}
+                          </a>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">Sin contenido</span>
+                        )}
+                      </div>
+                    </li>
+                  )
+                })}
+              </ul>
+            ) : (
+              <span className="text-sm text-muted-foreground">Sin fichas técnicas registradas</span>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
             <CardTitle className="text-base">Documentos de la solicitud</CardTitle>
           </CardHeader>
           <CardContent className="grid gap-4 sm:grid-cols-2">
@@ -680,6 +828,82 @@ export default function InvitadoSolicitudDetallePage() {
           </CardContent>
         </Card>
       </div>
+
+      {fichaVista && (
+        <div
+          className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50"
+          onClick={() => setFichaVista(null)}
+        >
+          <div
+            className="my-8 flex max-h-[90vh] w-full max-w-[850px] flex-col rounded-xl bg-card shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-border p-6">
+              <div>
+                <h3 className="text-lg font-semibold text-foreground">
+                  {fichaVista.tipo || fichaVista.nombre || 'Ficha técnica'}
+                </h3>
+                <p className="text-xs text-muted-foreground">
+                  {formatFecha(fichaVista.fecha || fichaVista.created_at)}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setFichaVista(null)}
+                className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto bg-neutral-200">
+              {(() => {
+                const tipo = fichaVista.tipo || fichaVista.nombre || ''
+                const secciones = (fichaVista.secciones || []) as SeccionFicha[]
+
+                const propsComunes = {
+                  secciones,
+                  onCampoChange: () => {},
+                  editing: false,
+                  onToggleEditing: () => {},
+                  onDownload: () => {},
+                  downloading: false,
+                  showToolbar: false,
+                  nombreTipo: tipo,
+                }
+
+                if (tipo === 'Colado UCLA') {
+                  return (
+                    <FichaTecnicaColadoUcla
+                      {...propsComunes}
+                      dientes={dientesFicha}
+                      codigoTrazabilidad={codigoTrazabilidadFicha}
+                    />
+                  )
+                }
+
+                if (tipo === 'Cerámica Encia') {
+                  return (
+                    <FichaTecnicaCeramicaEncia
+                      {...propsComunes}
+                      dientes={dientesFicha}
+                      codigoTrazabilidad={codigoTrazabilidadFicha}
+                    />
+                  )
+                }
+
+                return <FichaTecnicaGenerica {...propsComunes} />
+              })()}
+            </div>
+
+            <div className="flex items-center justify-end gap-3 border-t border-border p-6">
+              <Button variant="outline" onClick={() => setFichaVista(null)}>
+                Cerrar
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </AppShell>
   )
 }

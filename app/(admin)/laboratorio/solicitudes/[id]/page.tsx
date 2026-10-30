@@ -9,7 +9,10 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { DentalChart } from '@/components/dentcore/solicitud/dental-chart'
 import { OrdenFabricacion } from '@/components/dentcore/solicitud/orden-fabricacion'
-import { ChevronLeft, Save, RefreshCw, Upload, FileText, Download } from 'lucide-react'
+import { FichaTecnicaColadoUcla } from '@/components/dentcore/fichas-tecnicas/ficha-tecnica-colado-ucla'
+import { FichaTecnicaCeramicaEncia } from '@/components/dentcore/fichas-tecnicas/ficha-tecnica-ceramica-encia'
+import { FichaTecnicaGenerica } from '@/components/dentcore/fichas-tecnicas/ficha-tecnica-generica'
+import { ChevronLeft, Save, RefreshCw, Upload, FileText, Eye, X } from 'lucide-react'
 import type { ToothStatus } from '@/components/dentcore/solicitud/solicitud-types'
 import { exportPageToPDF, getPageTitle } from '@/lib/pdf-export'
 
@@ -28,6 +31,28 @@ interface FaseLite {
   id: string
   nombre: string
   orden: number
+}
+
+interface CampoFicha {
+  label: string
+  value: string
+}
+
+interface SeccionFicha {
+  titulo: string
+  campos: CampoFicha[]
+}
+
+interface FichaRegistro {
+  id: string
+  nombre?: string | null
+  tipo?: string | null
+  fecha?: string | null
+  secciones?: SeccionFicha[] | null
+  nombre_archivo?: string | null
+  archivo_url?: string | null
+  tipo_mime?: string | null
+  created_at?: string | null
 }
 
 interface SolicitudEditable {
@@ -91,6 +116,16 @@ function parseDientes(dientes?: string | null): number[] {
   ).sort((a, b) => a - b)
 }
 
+function formatFecha(value?: string | null) {
+  if (!value) return '—'
+  const d = new Date(value)
+  return isNaN(d.getTime()) ? value : d.toLocaleDateString('es-ES')
+}
+
+function tieneSecciones(ficha: FichaRegistro) {
+  return Array.isArray(ficha.secciones) && ficha.secciones.length > 0
+}
+
 export default function SolicitudDetallePage() {
   const router = useRouter()
   const params = useParams<{ id: string }>()
@@ -113,7 +148,8 @@ export default function SolicitudDetallePage() {
   const [garantiaFile, setGarantiaFile] = useState<File | null>(null)
   const garantiaInputRef = useRef<HTMLInputElement>(null)
   const firmaInputRef = useRef<HTMLInputElement>(null)
-  const [fichas, setFichas] = useState<any[]>([])
+  const [fichas, setFichas] = useState<FichaRegistro[]>([])
+  const [fichaVista, setFichaVista] = useState<FichaRegistro | null>(null)
 
   useEffect(() => {
     if (!id) return
@@ -230,6 +266,16 @@ export default function SolicitudDetallePage() {
     loadFichas()
   }, [solicitud])
 
+  // Cerrar el modal de ficha con Escape
+  useEffect(() => {
+    if (!fichaVista) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setFichaVista(null)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [fichaVista])
+
   async function handleGarantiaSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!solicitud || !garantiaFile) return
@@ -301,6 +347,7 @@ export default function SolicitudDetallePage() {
       }
 
       setFichas((prev) => prev.filter((f) => f.id !== fichaId))
+      setFichaVista((prev) => (prev?.id === fichaId ? null : prev))
     } catch (e) {
       alert('Error al eliminar: ' + (e as any).message)
     }
@@ -433,6 +480,13 @@ export default function SolicitudDetallePage() {
   const estadoOpt = ESTADO_OPTIONS.find((e) => e.value === form.estado)
   const prioridadOpt = PRIORIDAD_OPTIONS.find((p) => p.value === form.prioridad)
   const faseSeleccionada = fases.find((f) => f.id === form.fase_id)
+
+  // Datos para el visor de fichas (solo lectura)
+  const codigoRaw = solicitud.codigo_trazabilidad || ''
+  const codigoPartes = codigoRaw.split('-')
+  const codigoTrazabilidadFicha =
+    codigoPartes.length >= 2 ? `${codigoPartes[0]}-${codigoPartes[1]}` : codigoRaw
+  const dientesFicha = selectedTeeth.map(String)
 
   return (
     <div className="space-y-4">
@@ -917,41 +971,52 @@ export default function SolicitudDetallePage() {
             {fichas.length > 0 ? (
               <ul className="mt-2 divide-y divide-border">
                 {fichas.map((ficha) => {
+                  const nombre = ficha.nombre || ficha.nombre_archivo || 'Ficha técnica'
+                  const fecha = formatFecha(ficha.fecha || ficha.created_at)
+                  const conSecciones = tieneSecciones(ficha)
                   const href =
                     ficha.archivo_url ||
                     (ficha.nombre_archivo?.startsWith('http') ? ficha.nombre_archivo : null)
-                  const isViewable = isViewableDocument(ficha.nombre_archivo, ficha.tipo_mime)
+                  const archivoVisible = isViewableDocument(ficha.nombre_archivo, ficha.tipo_mime)
+
                   return (
-                    <li key={ficha.id} className="py-2 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-                      <div className="flex items-center gap-3">
-                        {isViewable ? (
-                          <a
-                            href={href || '#'}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="underline text-primary text-sm"
-                          >
-                            {ficha.nombre_archivo || 'Ficha técnica'}
-                          </a>
-                        ) : (
-                          <span className="text-sm text-foreground truncate max-w-[200px]">
-                            {ficha.nombre_archivo || 'Ficha técnica'}
-                          </span>
-                        )}
-                        <span className="text-xs text-muted-foreground">
-                          {new Date(ficha.created_at).toLocaleString('es-ES')}
-                        </span>
+                    <li
+                      key={ficha.id}
+                      className="flex flex-col gap-2 py-2 sm:flex-row sm:items-center sm:justify-between"
+                    >
+                      <div className="flex min-w-0 items-center gap-3">
+                        <FileText className="size-4 shrink-0 text-muted-foreground" />
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium text-foreground">{nombre}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {ficha.tipo ? `${ficha.tipo} · ` : ''}
+                            {fecha}
+                          </p>
+                        </div>
                       </div>
                       <div className="flex items-center gap-2">
-                        {href && !isViewable && (
+                        {conSecciones ? (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="gap-2"
+                            onClick={() => setFichaVista(ficha)}
+                          >
+                            <Eye className="size-4" />
+                            Ver
+                          </Button>
+                        ) : href ? (
                           <a
                             href={href}
                             target="_blank"
                             rel="noreferrer"
-                            className="text-xs underline text-primary"
+                            className="text-xs text-primary underline"
                           >
-                            Descargar
+                            {archivoVisible ? 'Abrir' : 'Descargar'}
                           </a>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">Sin contenido</span>
                         )}
                         <Button variant="destructive" size="sm" onClick={() => handleFichaDelete(ficha.id)}>
                           Eliminar
@@ -962,11 +1027,18 @@ export default function SolicitudDetallePage() {
                 })}
               </ul>
             ) : (
-              <span className="text-sm text-muted-foreground">Sin fichas técnicas registradas</span>
+              <span className="mt-1 block text-sm text-muted-foreground">Sin fichas técnicas registradas</span>
             )}
             <div className="mt-4 flex gap-2">
-              <Button type="button" variant="outline" size="sm" onClick={() => router.push(`/laboratorio/fichas-tecnicas?solicitud_id=${encodeURIComponent(solicitud.id)}`)}>
-                Seleccionar archivo
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() =>
+                  router.push(`/laboratorio/fichas-tecnicas?solicitud_id=${encodeURIComponent(solicitud.id)}`)
+                }
+              >
+                Gestionar fichas técnicas
               </Button>
             </div>
           </div>
@@ -974,6 +1046,82 @@ export default function SolicitudDetallePage() {
       </Card>
 
       <OrdenFabricacion solicitud={solicitud} />
+
+      {fichaVista && (
+        <div
+          className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50"
+          onClick={() => setFichaVista(null)}
+        >
+          <div
+            className="my-8 flex max-h-[90vh] w-full max-w-[850px] flex-col rounded-xl bg-card shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-border p-6">
+              <div>
+                <h3 className="text-lg font-semibold text-foreground">
+                  {fichaVista.tipo || fichaVista.nombre || 'Ficha técnica'}
+                </h3>
+                <p className="text-xs text-muted-foreground">
+                  {formatFecha(fichaVista.fecha || fichaVista.created_at)}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setFichaVista(null)}
+                className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto bg-neutral-200">
+              {(() => {
+                const tipo = fichaVista.tipo || fichaVista.nombre || ''
+                const secciones = (fichaVista.secciones || []) as SeccionFicha[]
+
+                const propsComunes = {
+                  secciones,
+                  onCampoChange: () => {},
+                  editing: false,
+                  onToggleEditing: () => {},
+                  onDownload: () => {},
+                  downloading: false,
+                  showToolbar: false,
+                  nombreTipo: tipo,
+                }
+
+                if (tipo === 'Colado UCLA') {
+                  return (
+                    <FichaTecnicaColadoUcla
+                      {...propsComunes}
+                      dientes={dientesFicha}
+                      codigoTrazabilidad={codigoTrazabilidadFicha}
+                    />
+                  )
+                }
+
+                if (tipo === 'Cerámica Encia') {
+                  return (
+                    <FichaTecnicaCeramicaEncia
+                      {...propsComunes}
+                      dientes={dientesFicha}
+                      codigoTrazabilidad={codigoTrazabilidadFicha}
+                    />
+                  )
+                }
+
+                return <FichaTecnicaGenerica {...propsComunes} />
+              })()}
+            </div>
+
+            <div className="flex items-center justify-end gap-3 border-t border-border p-6">
+              <Button variant="outline" onClick={() => setFichaVista(null)}>
+                Cerrar
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -1033,23 +1181,6 @@ function Header({
           </Button>
         )}
       </div>
-    </div>
-  )
-}
-
-function InfoRow({
-  label,
-  value,
-  className,
-}: {
-  label: string
-  value: React.ReactNode
-  className?: string
-}) {
-  return (
-    <div className={className}>
-      <span className="text-xs text-muted-foreground">{label}</span>
-      <span className="mt-0.5 block text-sm text-foreground break-words">{value}</span>
     </div>
   )
 }
