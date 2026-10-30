@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import { updateLaboratorio } from '@/lib/services/laboratorio.service'
 
 // Nombre de la tabla donde guardas los materiales (catálogo). Cámbialo si se llama distinto.
 const TABLA_MATERIALES = 'materiales'
@@ -155,6 +156,7 @@ function parseProductosSolicitud(productos?: string | null): ProductoSolicitud[]
 
 export function OrdenFabricacion({ solicitud }: { solicitud: any }) {
   const [lab, setLab] = useState<any>(null)
+const [tecnico, setTecnico] = useState('')
   const [grupos, setGrupos] = useState<GrupoProducto[]>([])
   const [fasesLoading, setFasesLoading] = useState(false)
   const [empleados, setEmpleados] = useState<{ id: string; nombre: string }[]>([])
@@ -185,7 +187,10 @@ export function OrdenFabricacion({ solicitud }: { solicitud: any }) {
       .eq('id', solicitud.laboratorio_id)
       .maybeSingle()
       .then(({ data }) => {
-        if (!cancelled) setLab(data)
+        if (!cancelled) {
+          setLab(data)
+          setTecnico(data?.tecnico_responsable || '')
+        }
       })
     return () => {
       cancelled = true
@@ -568,7 +573,20 @@ export function OrdenFabricacion({ solicitud }: { solicitud: any }) {
 
       <section className="mb-4">
         <h3 className="font-semibold">Técnico Responsable</h3>
-        <p>Jazmín Valencia</p>
+        <input
+          className={INPUT_CLASS}
+          value={tecnico}
+          onChange={(e) => setTecnico(e.target.value)}
+          onBlur={async () => {
+            if (!lab?.id) return
+            try {
+              await updateLaboratorio(lab.id, { tecnico_responsable: tecnico } as any)
+            } catch {
+              // ignore save errors
+            }
+          }}
+          placeholder="Nombre del técnico"
+        />
       </section>
 
       <section className="mb-4">

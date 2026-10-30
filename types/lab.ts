@@ -6,6 +6,7 @@ export interface Laboratorio {
   direcccion: string | null
   ciudad: string | null
   logo_url: string | null
+  tecnico_responsable?: string | null
   plan: 'starter' | 'professional' | 'enterprise'
   created_at: string
   updated_at: string
