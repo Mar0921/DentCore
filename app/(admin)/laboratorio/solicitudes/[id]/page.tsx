@@ -702,7 +702,7 @@ export default function SolicitudDetallePage() {
               <div className="grid gap-1.5">
                 <span className="text-xs text-muted-foreground">Fase actual</span>
                 <span className="text-sm text-foreground">
-                  {faseSeleccionada ? `${faseSeleccionada.orden}. ${faseSeleccionada.nombre}` : solicitud.fase_id || '—'}
+                  {faseSeleccionada ? `${faseSeleccionada.orden}. ${faseSeleccionada.nombre}` : (solicitud.fase_id || solicitud.faseActual || solicitud.fase_actual || '—')}
                 </span>
               </div>
               <div className="grid gap-1.5">
@@ -881,7 +881,7 @@ export default function SolicitudDetallePage() {
             )}
           </div>
           <div className="sm:col-span-2">
-            <span className="text-xs text-muted-foreground">Encuesta posadaptación</span>
+            <span className="block text-xs text-muted-foreground mb-1">Encuesta posadaptación</span>
             {encuestas.posAdaptacion ? (
               <div className="mt-1 rounded-lg border border-border bg-secondary/30 p-3">
                 <p className="text-sm font-medium text-foreground">Encuesta registrada</p>
@@ -924,7 +924,7 @@ export default function SolicitudDetallePage() {
             )}
           </div>
           <div className="sm:col-span-2">
-            <span className="text-xs text-muted-foreground">Buzón de quejas / reclamos / sugerencias</span>
+            <span className="block text-xs text-muted-foreground mb-1">Buzón de quejas / reclamos / sugerencias</span>
             {encuestas.buzon ? (
               <div className="mt-1 rounded-lg border border-border bg-secondary/30 p-3">
                 <p className="text-sm font-medium text-foreground">Solicitud registrada</p>

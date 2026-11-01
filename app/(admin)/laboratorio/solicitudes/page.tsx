@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { Plus, Search, Eye, MoreHorizontal, FileText } from 'lucide-react'
+import { Plus, Search, Eye, FileText } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
@@ -594,19 +594,9 @@ export default function SolicitudesPage() {
                           </div>
                         </td>
                         <td className="px-4 py-4 text-right">
-                          <DropdownMenu>
-                            <DropdownMenuTrigger>
-                              <Button variant="ghost" size="icon" className="size-8">
-                                <MoreHorizontal className="size-4" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuItem onClick={() => router.push(`/laboratorio/solicitudes/${req.id}`)}>
-                                <Eye className="size-4" />
-                                Ver detalle
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
+                          <Button variant="ghost" size="sm" className="gap-2" onClick={() => router.push(`/laboratorio/solicitudes/${req.id}`)}>
+                            Ver detalle
+                          </Button>
                         </td>
                       </tr>
                     )

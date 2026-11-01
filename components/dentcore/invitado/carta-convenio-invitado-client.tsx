@@ -247,9 +247,9 @@ export function CartaConvenioInvitadoClient() {
             <p className="font-bold">COMPROMISO DEL ODONTOLOGO</p>
             <ol className="list-decimal pl-6 space-y-2">
               <li>Enviar la orden de fabricación de forma completa y clara con los datos solicitados sin enmendaduras y en letra legible en los términos establecidos en el artículo 6 de la resolución 214 de 2022.</li>
-              <li>Estar debidamente habilitado ante la secretaria de salud en los términos establecidos en la resolución 3100 de 2019.</li>
-              <li>Realizar el control pos-adaptación 8 días después en una cita de control al paciente y enviar copia del registro de verificación del estado del dispositivo en el control de la paciente realizada por el odontólogo.</li>
-              <li>Informar al Laboratorio dental cualquier evento adverso serio y compartir el código del evento adverso reportado en los programas de tecno vigilancia.</li>
+              <li>Estar debidamente habilitado ante la secretaría de salud en los términos establecidos en la resolución 3100 de 2019.</li>
+              <li>Realizar el control pos-adaptación 8 días después en una cita de control al paciente y enviar copia del registro de verificación del estado del dispositivo en el control del paciente realizada por el odontólogo.</li>
+              <li>Informar al Laboratorio dental cualquier evento adverso serio y compartir el código del evento adverso reportado en los programas de tecnovigilancia.</li>
             </ol>
           </div>
 
@@ -262,7 +262,7 @@ export function CartaConvenioInvitadoClient() {
                   {firmas[0] && <img src={firmas[0].firma_data_url} alt="Firma laboratorio" className="h-16 object-contain" />}
                 </div>
                 <div className="space-y-1">
-                  <p className="font-semibold">__________________________________</p>
+
                   <p className="font-bold">Representante legal</p>
                   {firmas[0] && (
                     <>
@@ -283,7 +283,7 @@ export function CartaConvenioInvitadoClient() {
                   )}
                 </div>
                 <div className="space-y-1">
-                  <p className="font-semibold">__________________________________</p>
+
                   <p className="font-bold">Recibido Odontólogo o Auxiliar</p>
                   {firmaCliente && (
                     <Button type="button" variant="ghost" size="sm" className="mt-1 print:hidden" onClick={() => setOpenFirma(true)}>
@@ -304,7 +304,7 @@ export function CartaConvenioInvitadoClient() {
                 ) : null}
               </div>
               <div className="space-y-1">
-                <p className="font-semibold">____________________________________</p>
+
                 <p className="font-bold">D.T LABORATORIO DENTAL {laboratorio?.nombre?.toUpperCase() || ''}</p>
                 {(firmas[1] || firmas[0]) && (
                   <>
@@ -316,7 +316,6 @@ export function CartaConvenioInvitadoClient() {
             </div>
           </div>
 
-          <p className="text-center pt-8">Atentamente</p>
         </CardContent>
       </Card>
 

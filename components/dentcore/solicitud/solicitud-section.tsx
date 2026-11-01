@@ -11,6 +11,7 @@ import { DentalChart } from './dental-chart'
 import { ZonaDentalChart } from './zona-dental-chart'
 import { CalendarIcon, Upload, File, X, Save, RotateCcw } from 'lucide-react'
 import type { SolicitudEntry, SolicitudFormData, ToothStatus, UploadedFile } from './solicitud-types'
+import { FechaCalendarPicker } from './fecha-calendar-picker'
 
 const TIPOS_TRABAJO_PRINCIPAL = [
   'LIBRE DE METAL',
@@ -686,62 +687,20 @@ export function SolicitudSection({
           </CardHeader>
           <CardContent className="grid gap-4">
             <div className="grid gap-1.5">
-              <label className="text-sm font-medium text-primary">Fecha de elaboración</label>
-              <div className="grid grid-cols-3 gap-2">
-                <Input
-                  type="number"
-                  min="1"
-                  max="31"
-                  value={formData.fechaElaboracion.dia}
-                  onChange={(e) => onFormDataChange({ fechaElaboracion: { ...formData.fechaElaboracion, dia: e.target.value } })}
-                  placeholder="DD"
-                />
-                <Input
-                  type="number"
-                  min="1"
-                  max="12"
-                  value={formData.fechaElaboracion.mes}
-                  onChange={(e) => onFormDataChange({ fechaElaboracion: { ...formData.fechaElaboracion, mes: e.target.value } })}
-                  placeholder="MM"
-                />
-                <Input
-                  type="number"
-                  min="2026"
-                  max="2100"
-                  value={formData.fechaElaboracion.anio}
-                  onChange={(e) => onFormDataChange({ fechaElaboracion: { ...formData.fechaElaboracion, anio: e.target.value } })}
-                  placeholder="AAAA"
-                />
-              </div>
+              <FechaCalendarPicker
+                value={formData.fechaElaboracion}
+                onChange={(fecha) => onFormDataChange({ fechaElaboracion: fecha })}
+                label="Fecha de elaboración"
+                placeholder="Seleccionar fecha"
+              />
             </div>
             <div className="grid gap-1.5">
-              <label className="text-sm font-medium text-primary">Fecha de entrega</label>
-              <div className="grid grid-cols-3 gap-2">
-                <Input
-                  type="number"
-                  min="1"
-                  max="31"
-                  value={formData.fechaEntrega.dia}
-                  onChange={(e) => onFormDataChange({ fechaEntrega: { ...formData.fechaEntrega, dia: e.target.value } })}
-                  placeholder="DD"
-                />
-                <Input
-                  type="number"
-                  min="1"
-                  max="12"
-                  value={formData.fechaEntrega.mes}
-                  onChange={(e) => onFormDataChange({ fechaEntrega: { ...formData.fechaEntrega, mes: e.target.value } })}
-                  placeholder="MM"
-                />
-                <Input
-                  type="number"
-                  min="2026"
-                  max="2100"
-                  value={formData.fechaEntrega.anio}
-                  onChange={(e) => onFormDataChange({ fechaEntrega: { ...formData.fechaEntrega, anio: e.target.value } })}
-                  placeholder="AAAA"
-                />
-              </div>
+              <FechaCalendarPicker
+                value={formData.fechaEntrega}
+                onChange={(fecha) => onFormDataChange({ fechaEntrega: fecha })}
+                label="Fecha de entrega"
+                placeholder="Seleccionar fecha"
+              />
             </div>
             <div className="grid gap-1.5">
               <label className="text-sm font-medium text-primary">Código de trazabilidad</label>

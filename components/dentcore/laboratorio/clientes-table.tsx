@@ -60,8 +60,20 @@ export function ClientesTable() {
    async function loadClientes() {
      setLoading(true)
      try {
-       const { data: labs } = await supabase.from('laboratorio').select('id').limit(1)
-       const labId = labs?.[0]?.id
+      const { data: { user } } = await supabase.auth.getUser()
+      let email = user?.email || (typeof window !== 'undefined' ? localStorage.getItem('labUserEmail') : null)
+      let labId: string | undefined
+      if (email) {
+        const { data: labs } = await supabase.from('laboratorio').select('id').eq('email', email).limit(1)
+        labId = labs?.[0]?.id
+        if (!labId) {
+          const { data: emps } = await supabase.from('empleados').select('laboratorio_id').eq('email', email).limit(1)
+          labId = emps?.[0]?.laboratorio_id
+        }
+      }
+      if (!labId) {
+        // no filter fallback: show all clients
+      }
        let query = supabase.from('cliente').select('*').order('created_at', { ascending: false })
        if (labId) query = query.eq('laboratorio_id', labId)
        const { data, error } = await query

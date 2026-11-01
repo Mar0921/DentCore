@@ -18,6 +18,7 @@ interface SolicitudLite {
   tipo: string | null
   paciente: string | null
   odontologonombre: string | null
+  estado: string | null
 }
 
 export default function PosAdaptacionForm() {
@@ -63,7 +64,7 @@ export default function PosAdaptacionForm() {
           if (odonto?.id) {
             const { data } = await supabase
               .from('solicitudes')
-              .select('id, tipo, paciente, odontologonombre')
+              .select('id, tipo, paciente, odontologonombre, estado')
               .eq('odontologo_id', odonto.id)
               .order('created_at', { ascending: false })
             if (data) result = data as SolicitudLite[]
@@ -73,7 +74,7 @@ export default function PosAdaptacionForm() {
         if (result.length === 0 && nombreBuscado) {
           const { data } = await supabase
             .from('solicitudes')
-            .select('id, tipo, paciente, odontologonombre')
+            .select('id, tipo, paciente, odontologonombre, estado')
             .eq('odontologonombre', nombreBuscado)
             .order('created_at', { ascending: false })
           if (data) result = data as SolicitudLite[]
@@ -97,15 +98,20 @@ export default function PosAdaptacionForm() {
     setChecks((prev) => ({ ...prev, [key]: !prev[key] }))
   }
 
-  const handleSubmit = async (e: React.FormEvent) => {
+const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    const selectedSolicitud = solicitudes.find((s) => s.id === solicitudId)
+
+    if (!selectedSolicitud || selectedSolicitud.estado !== 'completada') {
+      setError('La encuesta de postadaptación solo está disponible cuando la solicitud esté en estado &quot;Completada&quot;.')
+      return
+    }
+
     setLoading(true)
     setError('')
     setSuccess(false)
 
     try {
-      const selectedSolicitud = solicitudes.find((s) => s.id === solicitudId)
-
       const { error: insertError } = await supabase.from('encuestas_pos_adaptacion').insert({
         solicitud_id: solicitudId || null,
         profesional_email: email || null,

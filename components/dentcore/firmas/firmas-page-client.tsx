@@ -10,7 +10,6 @@ import { Plus, Edit, Trash2, PenTool, RotateCcw } from 'lucide-react'
 
 const ROLES_REQUERIDOS = [
   'Representante legal',
-  'D.T LABORATORIO DENTAL',
   'Director tecnico',
   'Asistente técnico',
 ]
@@ -26,6 +25,7 @@ export function FirmasPageClient() {
     firma_data_url: '',
   })
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  const [canvasDirty, setCanvasDirty] = useState(false)
   const [isDrawing, setIsDrawing] = useState(false)
 
   useEffect(() => {
@@ -39,6 +39,19 @@ export function FirmasPageClient() {
   }, [laboratorioId])
 
   async function loadLaboratorio() {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (user?.email) {
+      const { data } = await supabase.from('laboratorio').select('id').eq('email', user.email).limit(1)
+      if (data && data.length > 0) {
+        setLaboratorioId(data[0].id)
+        return
+      }
+      const { data: emp } = await supabase.from('empleados').select('laboratorio_id').eq('email', user.email).limit(1)
+      if (emp && emp.length > 0 && emp[0].laboratorio_id) {
+        setLaboratorioId(emp[0].laboratorio_id)
+        return
+      }
+    }
     const { data } = await supabase.from('laboratorio').select('id').limit(1)
     if (data && data.length > 0) setLaboratorioId(data[0].id)
   }
@@ -86,6 +99,7 @@ export function FirmasPageClient() {
 
   function startDrawing(e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) {
     setIsDrawing(true)
+    setCanvasDirty(true)
     const canvas = canvasRef.current
     if (!canvas) return
     const ctx = canvas.getContext('2d')
@@ -149,12 +163,14 @@ export function FirmasPageClient() {
   function handleNew() {
     setEditing(null)
     setFormData({ nombre: '', titulo: '', rol: '', firma_data_url: '' })
+    setCanvasDirty(false)
     setOpen(true)
   }
 
   function handleEdit(f: any) {
     setEditing(f)
     setFormData({ nombre: f.nombre, titulo: f.titulo || '', rol: f.rol || '', firma_data_url: f.firma_data_url })
+    setCanvasDirty(false)
     setOpen(true)
   }
 
@@ -173,7 +189,9 @@ export function FirmasPageClient() {
         alert('Ya existe una firma registrada para este rol')
         return
       }
-      const firmaDataUrl = editing ? formData.firma_data_url : saveFromCanvas()
+      const firmaDataUrl = editing
+        ? (canvasDirty ? saveFromCanvas() : formData.firma_data_url)
+        : saveFromCanvas()
       if (!firmaDataUrl || firmaDataUrl === 'data:,') {
         alert('Debe dibujar la firma')
         return

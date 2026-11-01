@@ -32,22 +32,62 @@ export function ClienteDetallePageClient() {
       let solData = await supabase.from('solicitudes').select('*').eq('cliente_id', id)
       if (solData.data && solData.data.length > 0) {
         setSolicitudes(solData.data)
-        return
-      }
-      solData = await supabase.from('solicitud').select('*').eq('cliente_id', id)
-      if (solData.data && solData.data.length > 0) {
-        setSolicitudes(solData.data)
-        return
-      }
-      // Buscar por odontologo_id o por otros campos
-      if (data?.email) {
-        solData = await supabase.from('solicitudes').select('*').or(`odontologo_id.eq.${id},odontologonombre.eq.${data.nombre},odontologonombre.eq.${data.clinica}`).limit(100)
+      } else {
+        solData = await supabase.from('solicitud').select('*').eq('cliente_id', id)
         if (solData.data && solData.data.length > 0) {
           setSolicitudes(solData.data)
-          return
+        } else if (data?.nombre || data?.clinica) {
+          // Buscar por odontologo (dentista) vinculado al cliente
+          const nombreBuscado = data.nombre
+          const clinicaBuscado = data.clinica
+          let solicitudesResult: any[] = []
+
+          if (nombreBuscado) {
+            const { data: odonto } = await supabase
+              .from('odontologos')
+              .select('id')
+              .eq('nombre', nombreBuscado)
+              .maybeSingle()
+
+            if (odonto?.id) {
+              const { data: porOdonto } = await supabase
+                .from('solicitudes')
+                .select('*')
+                .eq('odontologo_id', odonto.id)
+                .order('created_at', { ascending: false })
+              if (porOdonto) solicitudesResult = porOdonto
+            }
+
+            if (solicitudesResult.length === 0) {
+              const { data: porNombre } = await supabase
+                .from('solicitudes')
+                .select('*')
+                .eq('odontologonombre', nombreBuscado)
+                .order('created_at', { ascending: false })
+              if (porNombre) solicitudesResult = porNombre
+            }
+
+            if (solicitudesResult.length === 0 && clinicaBuscado) {
+              const { data: porClinica } = await supabase
+                .from('solicitudes')
+                .select('*')
+                .eq('odontologonombre', clinicaBuscado)
+                .order('created_at', { ascending: false })
+              if (porClinica) solicitudesResult = porClinica
+            }
+          }
+
+          if (solicitudesResult.length === 0 && data?.nombre) {
+            const { data: porOdontoSingular } = await supabase
+              .from('solicitud')
+              .select('*')
+              .eq('odontologonombre', data.nombre)
+              .order('created_at', { ascending: false })
+            if (porOdontoSingular) solicitudesResult = porOdontoSingular
+          }
+
+          setSolicitudes(solicitudesResult)
         }
-        solData = await supabase.from('solicitud').select('*').or(`odontologo_id.eq.${id},odontologonombre.eq.${data.nombre},odontologonombre.eq.${data.clinica}`).limit(100)
-        if (solData.data) setSolicitudes(solData.data)
       }
     } catch (err) {
       console.error(err)
@@ -112,28 +152,42 @@ export function ClienteDetallePageClient() {
             <User className="size-4 text-muted-foreground" />
             <div>
               <p className="text-xs text-muted-foreground">Nombre</p>
-              <p className="text-sm font-medium">{cliente.nombre || 'â€”'}</p>
+              <p className="text-sm font-medium">{cliente.nombre || '—'}</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
             <Mail className="size-4 text-muted-foreground" />
             <div>
               <p className="text-xs text-muted-foreground">Email</p>
-              <p className="text-sm font-medium">{cliente.email || 'â€”'}</p>
+              <p className="text-sm font-medium">{cliente.email || '—'}</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
             <Phone className="size-4 text-muted-foreground" />
             <div>
-              <p className="text-xs text-muted-foreground">TelÃ©fono</p>
-              <p className="text-sm font-medium">{cliente.telefono || cliente.celular || 'â€”'}</p>
+              <p className="text-xs text-muted-foreground">Teléfono</p>
+              <p className="text-sm font-medium">{cliente.telefono || cliente.celular || '—'}</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
             <Building2 className="size-4 text-muted-foreground" />
             <div>
-              <p className="text-xs text-muted-foreground">ClÃ­nica</p>
-              <p className="text-sm font-medium">{cliente.clinica || 'â€”'}</p>
+              <p className="text-xs text-muted-foreground">Clínica</p>
+              <p className="text-sm font-medium">{cliente.clinica || '—'}</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <FileText className="size-4 text-muted-foreground" />
+            <div>
+              <p className="text-xs text-muted-foreground">Locación Extra</p>
+              <p className="text-sm font-medium">{cliente.locacion_extra || '—'}</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <FileText className="size-4 text-muted-foreground" />
+            <div>
+              <p className="text-xs text-muted-foreground">Dirección Extra</p>
+              <p className="text-sm font-medium">{cliente.direccion_extra || '—'}</p>
             </div>
           </div>
         </CardContent>
@@ -164,7 +218,7 @@ export function ClienteDetallePageClient() {
                   {solicitudes.map((sol) => (
                     <tr key={sol.id} className="border-b hover:bg-muted/50">
                       <td className="p-2 text-sm font-medium">{sol.codigo || sol.id.slice(0, 8)}</td>
-                      <td className="p-2 text-sm">{sol.paciente_nombre || sol.nombre_paciente || '—'}</td>
+                      <td className="p-2 text-sm">{sol.paciente_nombre || sol.nombre_paciente || sol.paciente || '—'}</td>
                       <td className="p-2 text-sm">{(sol.fecha_creacion || sol.created_at || sol.fecha) ? new Date(sol.fecha_creacion || sol.created_at || sol.fecha).toLocaleDateString('es-CO') : '—'}</td>
                       <td className="p-2 text-sm">
                         <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${

@@ -199,9 +199,11 @@ const [tecnico, setTecnico] = useState('')
 
   useEffect(() => {
     let cancelled = false
+    if (!lab?.id) return
     supabase
       .from('empleados')
       .select('id, nombre')
+      .eq('laboratorio_id', lab.id)
       .order('nombre')
       .then(({ data }) => {
         if (!cancelled && data) setEmpleados(data as { id: string; nombre: string }[])
@@ -209,7 +211,7 @@ const [tecnico, setTecnico] = useState('')
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [lab?.id])
 
   // Fases agrupadas por producto de la solicitud (productos -> producto_fases -> fases)
   useEffect(() => {
@@ -573,7 +575,7 @@ const [tecnico, setTecnico] = useState('')
 
       <section className="mb-4">
         <h3 className="font-semibold">Técnico Responsable</h3>
-        <input
+        <select
           className={INPUT_CLASS}
           value={tecnico}
           onChange={(e) => setTecnico(e.target.value)}
@@ -585,8 +587,14 @@ const [tecnico, setTecnico] = useState('')
               // ignore save errors
             }
           }}
-          placeholder="Nombre del técnico"
-        />
+        >
+          <option value="">Seleccionar técnico</option>
+          {empleados.map((e) => (
+            <option key={e.id} value={e.nombre}>
+              {e.nombre}
+            </option>
+          ))}
+        </select>
       </section>
 
       <section className="mb-4">

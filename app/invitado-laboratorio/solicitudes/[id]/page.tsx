@@ -686,6 +686,10 @@ export default function InvitadoSolicitudDetallePage() {
               <span className="text-xs text-muted-foreground">Encuesta posadaptación</span>
               {posEnviada ? (
                 <p className="text-sm text-green-600">Encuesta enviada correctamente</p>
+              ) : solicitud?.estado !== 'completada' ? (
+                <p className="text-sm text-amber-600">
+                  La encuesta de postadaptación solo está disponible cuando la solicitud esté en estado &quot;Completada&quot;.
+                </p>
               ) : (
                 <form className="mt-2 grid gap-3" onSubmit={handlePosSubmit}>
                   <Input
@@ -742,8 +746,13 @@ export default function InvitadoSolicitudDetallePage() {
                     value={posForm.fecha_entrega}
                     onChange={(e) => setPosForm({ ...posForm, fecha_entrega: e.target.value })}
                   />
+                  {solicitud?.estado !== 'completada' && (
+                    <p className="text-xs text-amber-600">
+                      La encuesta de postadaptación solo está disponible cuando la solicitud esté en estado &quot;Completada&quot;.
+                    </p>
+                  )}
                   {posError && <p className="text-xs text-destructive">{posError}</p>}
-                  <Button type="submit" size="sm" disabled={posLoading}>
+                  <Button type="submit" size="sm" disabled={posLoading || solicitud?.estado !== 'completada'}>
                     {posLoading ? 'Enviando...' : 'Enviar Encuesta'}
                   </Button>
                 </form>

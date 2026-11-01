@@ -29,13 +29,21 @@ export default function EmpleadoClientesPage() {
     loadClientes()
   }, [])
 
-  async function loadClientes() {
+   async function loadClientes() {
     setLoading(true)
     try {
-      const { data, error } = await supabase
+      const { data: { user } } = await supabase.auth.getUser()
+      let labId: string | undefined
+      if (user?.email) {
+        const { data: emps } = await supabase.from('empleados').select('laboratorio_id').eq('email', user.email).limit(1)
+        labId = emps?.[0]?.laboratorio_id
+      }
+      let query = supabase
         .from('cliente')
         .select('id, codigo, nombre, email, telefono, celular, clinica')
         .order('created_at', { ascending: false })
+      if (labId) query = query.eq('laboratorio_id', labId)
+      const { data, error } = await query
       if (!error && data) {
         setClientes(
           data.map((c: any) => ({
