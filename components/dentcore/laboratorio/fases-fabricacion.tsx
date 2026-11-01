@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef, Fragment } from 'react'
 import { supabase } from '@/lib/supabase'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -17,6 +17,8 @@ const ESTADO_OPTIONS = [
 
 interface FaseRow {
   id: string
+  productoId: string
+  productoNombre: string
   faseId: string
   nombre: string
   orden: number
@@ -44,6 +46,7 @@ interface GuardarFasePayload {
 interface FasesFabricacionProps {
   solicitudId?: string | null
   productoId?: string | null
+  productoIds?: string[] | null
   laboratorioId?: string | null
   dientes?: string | null
   cantidad?: number | null
@@ -58,6 +61,7 @@ const SELECT_CLASS =
 export function FasesFabricacion({
   solicitudId,
   productoId,
+  productoIds,
   laboratorioId,
   dientes,
   cantidad,
@@ -71,6 +75,28 @@ export function FasesFabricacion({
   const [openEvidenceDialog, setOpenEvidenceDialog] = useState(false)
   const [faseParaEvidencia, setFaseParaEvidencia] = useState<FaseRow | null>(null)
   const [evidenciaFile, setEvidenciaFile] = useState<File | null>(null)
+  const [lockedIds, setLockedIds] = useState<Set<string>>(new Set())
+  const [cameraOpen, setCameraOpen] = useState(false)
+  const videoRef = useRef<HTMLVideoElement>(null)
+  const streamRef = useRef<MediaStream | null>(null)
+
+  useEffect(() => {
+    if (!cameraOpen) return
+    let cancelled = false
+    navigator.mediaDevices
+      .getUserMedia({ video: { facingMode: 'environment' } })
+      .then((stream) => {
+        if (cancelled) return
+        streamRef.current = stream
+        if (videoRef.current) videoRef.current.srcObject = stream
+      })
+      .catch(() => setCameraOpen(false))
+    return () => {
+      cancelled = true
+      streamRef.current?.getTracks().forEach((t) => t.stop())
+      streamRef.current = null
+    }
+  }, [cameraOpen])
   const [subiendoEvidencia, setSubiendoEvidencia] = useState(false)
 
   useEffect(() => {
@@ -79,7 +105,15 @@ export function FasesFabricacion({
       setLoading(true)
       try {
         const [pfRes, sfRes, evRes] = await Promise.all([
-          productoId
+          productoIds != null
+            ? productoIds.length
+              ? supabase
+                  .from('producto_fases')
+                  .select('id, producto_id, fase_id, orden')
+                  .in('producto_id', productoIds)
+                  .order('orden', { ascending: true })
+              : Promise.resolve({ data: [], error: null })
+            : productoId
             ? supabase
                 .from('producto_fases')
                 .select('id, producto_id, fase_id, orden')
@@ -146,6 +180,15 @@ export function FasesFabricacion({
               }
             }
 
+            const productIds = Array.from(new Set(pfRows.map((p: any) => p.producto_id).filter(Boolean)))
+            const { data: productosData } = productIds.length
+              ? await supabase.from('productos').select('id, titulo, nombre').in('id', productIds)
+              : { data: [] as any[] }
+            const productosById: Record<string, any> = {}
+            ;(productosData || []).forEach((p: any) => {
+              productosById[p.id] = p
+            })
+
             rows = pfRows
               .map((p) => {
                 const fase = fasesById[p.fase_id]
@@ -153,6 +196,8 @@ export function FasesFabricacion({
                 const ev = evByProductoFase[p.id]
                 return {
                   id: p.id,
+                  productoId: p.producto_id,
+                  productoNombre: productosById[p.producto_id]?.titulo || productosById[p.producto_id]?.nombre || 'Producto',
                   faseId: p.fase_id,
                   nombre: fase?.nombre || p.fase_id || 'Fase',
                   orden: p.orden,
@@ -174,6 +219,8 @@ export function FasesFabricacion({
               .order('orden', { ascending: true })
             rows = (fasesData || []).map((f: any) => ({
               id: f.id,
+              productoId: '',
+              productoNombre: 'Fases',
               faseId: f.id,
               nombre: f.nombre,
               orden: f.orden,
@@ -188,6 +235,7 @@ export function FasesFabricacion({
           }
 
           setFases(rows)
+          setLockedIds(new Set(rows.filter((r: any) => r.estado === 'completado' || r.estado === 'completada').map((r: any) => r.id)))
         }
       } catch (err) {
         console.error('Error cargando fases de fabricación:', err)
@@ -257,6 +305,9 @@ export function FasesFabricacion({
       setFases((prev) =>
         prev.map((f) => (f.id === faseParaEvidencia.id ? { ...f, evidenciaUrl: 'uploaded' } : f)),
       )
+      if (isCompletado(faseParaEvidencia.estado)) {
+        setLockedIds((prev) => new Set(prev).add(faseParaEvidencia.id))
+      }
       setOpenEvidenceDialog(false)
       setFaseParaEvidencia(null)
       setEvidenciaFile(null)
@@ -322,11 +373,25 @@ export function FasesFabricacion({
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {fases.map((fase) => (
-                <tr
-                  key={fase.id}
-                  className="transition-colors hover:bg-secondary/30"
-                >
+            {Object.entries(
+              fases.reduce((acc: any, fase: any) => {
+                const key = fase.productoId || 'default'
+                if (!acc[key]) acc[key] = { nombre: fase.productoNombre || 'Producto', items: [] }
+                acc[key].items.push(fase)
+                return acc
+              }, {}),
+            ).map(([pid, group]: any) => (
+              <Fragment key={pid}>
+                <tr className="bg-secondary/40">
+                  <td colSpan={6} className="px-4 py-2 font-semibold text-foreground">
+                    {group.nombre}
+                  </td>
+                </tr>
+                {group.items.map((fase: any) => (
+                  <tr
+                    key={fase.id}
+                    className="transition-colors hover:bg-secondary/30"
+                  >
                   <td className="px-4 py-3">
                     <span className="font-medium text-foreground">{fase.nombre}</span>
                   </td>
@@ -335,7 +400,7 @@ export function FasesFabricacion({
                       value={fase.estado}
                       onChange={(e) => handleChangeEstado(fase.id, e.target.value)}
                       className={SELECT_CLASS + ' ' + (isCompletado(fase.estado) ? 'text-green-800 bg-green-50 border-green-300' : '')}
-                      disabled={isCompletado(fase.estado)}
+                      disabled={lockedIds.has(fase.id) || (isCompletado(fase.estado) && !!fase.evidenciaUrl)}
                     >
                       {ESTADO_OPTIONS.map((o) => (
                         <option key={o.value} value={o.value}>
@@ -357,7 +422,7 @@ export function FasesFabricacion({
                         handleChangeFecha(fase.id, 'fechaFinalizacion', e.target.value)
                       }
                       className={SELECT_CLASS}
-                      disabled={!!fase.evidenciaUrl}
+                      disabled={lockedIds.has(fase.id) || (isCompletado(fase.estado) && !!fase.evidenciaUrl)}
                     />
                   </td>
                   <td className="px-4 py-3">
@@ -368,14 +433,14 @@ export function FasesFabricacion({
                         handleChangeFecha(fase.id, 'fechaPrueba', e.target.value)
                       }
                       className={SELECT_CLASS}
-                      disabled={modo === 'empleado' || !!fase.evidenciaUrl}
+                      disabled={true}
                     />
                   </td>
                   <td className="px-4 py-3 whitespace-nowrap">
                     <Button
                       size="sm"
                       onClick={() => handleSave(fase)}
-                      disabled={fase.saving || !!fase.evidenciaUrl || (fase.empleadoNombre && fase.empleadoNombre !== empleadoActual)}
+                      disabled={fase.saving}
                       className="w-full"
                     >
                       <Save className="size-3 mr-1.5" />
@@ -384,6 +449,8 @@ export function FasesFabricacion({
                   </td>
                 </tr>
               ))}
+              </Fragment>
+            ))}
               {fases.length === 0 && (
                 <tr>
                   <td colSpan={6} className="px-4 py-8 text-center text-sm text-muted-foreground">
@@ -407,19 +474,59 @@ export function FasesFabricacion({
           <p className="text-sm text-muted-foreground mb-4">
             Fase: <span className="font-medium">{faseParaEvidencia.nombre}</span>
           </p>
-          <input
-            type="file"
-            accept="image/*"
-            onChange={(e) => {
-              const file = e.target.files?.[0] || null
-              setEvidenciaFile(file)
-            }}
-            className="block w-full text-sm text-muted-foreground file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary file:text-primary-foreground hover:file:bg-primary/90"
-          />
-          {evidenciaFile && (
-            <p className="text-xs text-muted-foreground mb-4">
-              {evidenciaFile.name} ({Math.round(evidenciaFile.size / 1024)} KB)
-            </p>
+          <div className="flex flex-col gap-2 mb-4 sm:flex-row">
+            <label className="flex-1 cursor-pointer rounded-full border border-input bg-card px-4 py-2 text-sm font-semibold text-foreground text-center hover:bg-secondary/50">
+              Subir foto
+              <input
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0] || null
+                  setEvidenciaFile(file)
+                }}
+              />
+            </label>
+            <button
+              type="button"
+              onClick={() => setCameraOpen(true)}
+              className="flex-1 cursor-pointer rounded-full bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground text-center hover:bg-primary/90"
+            >
+              Tomar foto
+            </button>
+          </div>
+          {cameraOpen && (
+            <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80">
+              <div className="bg-card rounded-xl p-4 w-full max-w-md space-y-3">
+                <video ref={videoRef} autoPlay playsInline className="w-full rounded-lg bg-black" />
+                <div className="flex justify-end gap-2">
+                  <Button variant="outline" size="sm" onClick={() => setCameraOpen(false)}>
+                    Cancelar
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={() => {
+                      const video = videoRef.current
+                      if (!video) return
+                      const canvas = document.createElement('canvas')
+                      canvas.width = video.videoWidth
+                      canvas.height = video.videoHeight
+                      const ctx = canvas.getContext('2d')
+                      if (!ctx) return
+                      ctx.drawImage(video, 0, 0)
+                      canvas.toBlob((blob) => {
+                        if (!blob) return
+                        const file = new File([blob], `foto_${Date.now()}.jpg`, { type: 'image/jpeg' })
+                        setEvidenciaFile(file)
+                        setCameraOpen(false)
+                      }, 'image/jpeg', 0.9)
+                    }}
+                  >
+                    Capturar
+                  </Button>
+                </div>
+              </div>
+            </div>
           )}
           <div className="flex justify-end gap-2">
             <Button

@@ -29,13 +29,13 @@ export async function uploadLogo(file: File, laboratorioId: string) {
   const fileName = `${laboratorioId}/logo.${fileExt}`
 
   const { data, error } = await supabase.storage
-    .from('logos-laboratorios')
+    .from('logos-laboratorio')
     .upload(fileName, file, { upsert: true })
 
   if (error) throw error
 
   const { data: publicUrl } = supabase.storage
-    .from('logos-laboratorios')
+    .from('logos-laboratorio')
     .getPublicUrl(data.path)
 
   return publicUrl.publicUrl

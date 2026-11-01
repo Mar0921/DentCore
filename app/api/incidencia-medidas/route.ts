@@ -5,6 +5,20 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseKey = process.env.SUPABASE_SERVICE_KEY!
 const supabase = createClient(supabaseUrl, supabaseKey)
 
+function mapMedidaEstadoToIncidenciaEstado(estadoMedida?: string | null): 'abierta' | 'en_proceso' | 'cerrada' {
+  const estado = (estadoMedida || 'nueva').toLowerCase().trim()
+
+  if (estado === 'resuelta' || estado === 'aplicada' || estado === 'cerrada') {
+    return 'cerrada'
+  }
+
+  if (estado === 'en_proceso') {
+    return 'en_proceso'
+  }
+
+  return 'abierta'
+}
+
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
@@ -29,11 +43,14 @@ export async function POST(request: NextRequest) {
     if (!incidencia_id || !medidas_tomadas) {
       return NextResponse.json({ error: 'Faltan campos obligatorios' }, { status: 400 })
     }
+
+    const estadoMedida = estado || 'nueva'
+
     const { data, error } = await supabase
       .from('incidencia_medidas')
       .insert({
         incidencia_id,
-        estado: estado || 'nueva',
+        estado: estadoMedida,
         fecha_resolucion: fecha_resolucion || null,
         responsable,
         medidas_tomadas,
@@ -41,10 +58,39 @@ export async function POST(request: NextRequest) {
       })
       .select()
       .single()
+
     if (error) {
       console.error('Error inserting medida:', error)
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
+
+    try {
+      // Obtener la última medida aplicada para asegurar que el estado sea el correcto
+      const { data: medidas } = await supabase
+        .from('incidencia_medidas')
+        .select('estado')
+        .eq('incidencia_id', incidencia_id)
+        .order('created_at', { ascending: false })
+        .limit(1)
+
+      const ultimoEstado = medidas && medidas[0] ? medidas[0].estado : estadoMedida
+      const nuevoEstadoIncidencia = mapMedidaEstadoToIncidenciaEstado(ultimoEstado)
+
+      const { error: updateError } = await supabase
+        .from('incidencias')
+        .update({
+          estado: nuevoEstadoIncidencia,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', incidencia_id)
+
+      if (updateError) {
+        console.error('Error updating incidencia estado:', updateError)
+      }
+    } catch (updateErr) {
+      console.error('Error updating incidencia estado:', updateErr)
+    }
+
     return NextResponse.json({ data }, { status: 200 })
   } catch (e) {
     console.error('Error:', e)

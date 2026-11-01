@@ -123,6 +123,26 @@ export default function DetalleIncidenciaEmpleadoPage() {
       setMedidas((prev) => [...prev, result.data])
       setFormData({ estado: 'nueva', fecha_resolucion: '', responsable: '', medidas_tomadas: '' })
       setMostrarForm(false)
+      // Forzar actualización con última medida
+      try {
+        const mres = await fetch(`/api/incidencia-medidas?incidencia_id=${id}`)
+        if (mres.ok) {
+          const mj = await mres.json()
+          if (Array.isArray(mj.data) && mj.data.length > 0) {
+            const ultima = mj.data[mj.data.length - 1]
+            const est = (ultima.estado || 'nueva').toLowerCase().trim()
+            let nuevo = 'abierta'
+            if (est === 'resuelta' || est === 'aplicada' || est === 'cerrada') nuevo = 'cerrada'
+            else if (est === 'en_proceso') nuevo = 'en_proceso'
+            await fetch('/api/incidencias', {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ id, estado: nuevo }),
+            })
+          }
+        }
+      } catch {}
+      await cargarIncidencia()
     } catch (e: any) {
       alert('Error: ' + e.message)
     } finally {

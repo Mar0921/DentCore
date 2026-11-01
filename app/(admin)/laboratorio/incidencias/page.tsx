@@ -308,16 +308,31 @@ export default function IncidenciasPage() {
       })
       const json = await res.json()
       if (!res.ok) throw new Error(json.error || 'Error al guardar')
-      // update incidencia estado
-      await fetch('/api/incidencias', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: editForm.id, estado: medidaForm.estado }),
-      })
       setMedidaForm({ estado: medidaForm.estado, fecha_resolucion: '', responsable: '', medidas_tomadas: '' })
-      setEditForm((f) => (f ? { ...f, estado: medidaForm.estado } : f))
-      setIncidencias((prev) => prev.map((inc) => (inc.id === editForm.id ? { ...inc, estado: medidaForm.estado } : inc)))
       loadMedidas(editForm.id)
+      
+      // Forzar sincronización con última medida
+      try {
+        const mres = await fetch(`/api/incidencia-medidas?incidencia_id=${editForm.id}`)
+        if (mres.ok) {
+          const mj = await mres.json()
+          if (Array.isArray(mj.data) && mj.data.length > 0) {
+            const ultima = mj.data[mj.data.length - 1]
+            const est = (ultima.estado || 'nueva').toLowerCase().trim()
+            let nuevo = 'abierta'
+            if (est === 'resuelta' || est === 'aplicada' || est === 'cerrada') nuevo = 'cerrada'
+            else if (est === 'en_proceso') nuevo = 'en_proceso'
+            await fetch('/api/incidencias', {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ id: editForm.id, estado: nuevo }),
+            })
+            setEditForm((f) => (f ? { ...f, estado: nuevo } : f))
+            setIncidencias((prev) => prev.map((inc) => (inc.id === editForm.id ? { ...inc, estado: nuevo } : inc)))
+          }
+        }
+      } catch {}
+      
       fetchData()
     } catch (e: any) {
       alert(e.message)

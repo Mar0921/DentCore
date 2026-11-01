@@ -24,6 +24,7 @@ interface SolicitudLite {
   asignado_a: string | null
   odontologonombre: string | null
   paciente: string | null
+  codigo_trazabilidad: string | null
   created_at: string
   updated_at: string
 }
@@ -48,7 +49,7 @@ export default function EmpleadoSolicitudesPage() {
       try {
         const { data } = await supabase
           .from('solicitudes')
-          .select('id, tipo, estado, prioridad, progreso, asignado_a, odontologonombre, paciente, created_at, updated_at')
+          .select('id, tipo, estado, prioridad, progreso, asignado_a, odontologonombre, paciente, codigo_trazabilidad, created_at, updated_at')
           .order('created_at', { ascending: false })
 
         setSolicitudes(data || [])
@@ -69,6 +70,7 @@ export default function EmpleadoSolicitudesPage() {
       (s.paciente || '').toLowerCase().includes(term) ||
       (s.odontologonombre || '').toLowerCase().includes(term) ||
       (s.tipo || '').toLowerCase().includes(term) ||
+      (s.codigo_trazabilidad || '').toLowerCase().includes(term) ||
       s.id.toLowerCase().includes(term)
     )
   })
@@ -113,7 +115,7 @@ export default function EmpleadoSolicitudesPage() {
                   <CardHeader className="pb-2">
                     <div className="flex items-center justify-between gap-2">
                       <CardTitle className="text-base">
-                        {s.tipo || 'Sin tipo'} · <span className="font-mono text-xs text-muted-foreground">{s.id}</span>
+                        {s.tipo || 'Sin tipo'} · <span className="font-mono text-xs text-muted-foreground">{s.codigo_trazabilidad || s.id}</span>
                       </CardTitle>
                       <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${status.color}`}>
                         {status.label}

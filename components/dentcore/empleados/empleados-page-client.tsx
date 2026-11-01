@@ -29,11 +29,46 @@ export function EmpleadosPageClient() {
 
   useEffect(() => {
     loadLaboratorio()
-    loadEmpleados()
     loadDepartamentos()
   }, [])
 
+  useEffect(() => {
+    if (laboratorioId) {
+      loadEmpleados()
+    }
+  }, [laboratorioId])
+
   async function loadLaboratorio() {
+    // Obtener el laboratorio_id del contexto actual
+    // Primero intentamos desde localStorage (labUserEmail o datos guardados)
+    const savedEmail = localStorage.getItem('labUserEmail')
+    if (savedEmail) {
+      const { data: emp } = await supabase
+        .from("empleados")
+        .select("laboratorio_id")
+        .eq("email", savedEmail.toLowerCase())
+        .maybeSingle()
+      if (emp?.laboratorio_id) {
+        setLaboratorioId(emp.laboratorio_id)
+        return
+      }
+    }
+
+    // También intentar obtener desde usuario autenticado
+    const { data: { user } } = await supabase.auth.getUser()
+    if (user?.email) {
+      const { data: emp } = await supabase
+        .from("empleados")
+        .select("laboratorio_id")
+        .eq("email", user.email.toLowerCase())
+        .maybeSingle()
+      if (emp?.laboratorio_id) {
+        setLaboratorioId(emp.laboratorio_id)
+        return
+      }
+    }
+
+    // Fallback
     const { data } = await supabase.from("laboratorio").select("id").limit(1)
     if (data && data.length > 0) setLaboratorioId(data[0].id)
   }
@@ -47,7 +82,12 @@ export function EmpleadosPageClient() {
   }
 
   async function loadEmpleados() {
-    const { data } = await supabase.from("empleados").select("*").order("created_at", { ascending: false })
+    if (!laboratorioId) return
+    const { data } = await supabase
+      .from("empleados")
+      .select("*")
+      .eq("laboratorio_id", laboratorioId)
+      .order("created_at", { ascending: false })
     if (data) setEmpleados(data)
   }
 

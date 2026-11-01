@@ -41,12 +41,35 @@ export function AdminDashboard() {
     }
   }
 
-  const handleLogoChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleLogoChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
-    if (file) {
-      const reader = new FileReader()
-      reader.onloadend = () => setLogoPreview(reader.result as string)
-      reader.readAsDataURL(file)
+    if (!file || !lab?.id) return
+
+    try {
+      const ext = file.name.split('.').pop() || 'png'
+      const storagePath = `public/${lab.id}/${Date.now()}_${Math.random().toString(36).slice(2, 9)}.${ext}`
+      const { error: uploadError } = await supabase.storage
+        .from('logos-laboratorio')
+        .upload(storagePath, file, { upsert: true })
+
+      if (uploadError) throw uploadError
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('logos-laboratorio')
+        .getPublicUrl(storagePath)
+
+      const { error: updateError } = await supabase
+        .from('laboratorio')
+        .update({ logo_url: publicUrl })
+        .eq('id', lab.id)
+
+      if (updateError) throw updateError
+
+      setLogoPreview(publicUrl)
+      setLab({ ...lab, logo_url: publicUrl })
+    } catch (err) {
+      console.error('Error al subir logo:', err)
+      alert('Error al subir el logo')
     }
   }
 

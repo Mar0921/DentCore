@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { Fragment, useState, useEffect, useMemo } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { Button } from '@/components/ui/button'
@@ -126,7 +126,7 @@ export default function EmpleadoSolicitudDetallePage() {
   const [solicitud, setSolicitud] = useState<SolicitudLite | null>(null)
   const [fases, setFases] = useState<FaseLite[]>([])
   const [loading, setLoading] = useState(true)
-  const [productoId, setProductoId] = useState<string | null>(null)
+  const [productoIds, setProductoIds] = useState<string[]>([])
 
   const SELECT_CLASS =
     "h-10 w-full rounded-lg border border-border bg-card px-3 text-sm text-foreground outline-none transition-colors focus:border-accent focus:ring-2 focus:ring-accent/30"
@@ -147,6 +147,8 @@ export default function EmpleadoSolicitudDetallePage() {
   const [guardandoMaterial, setGuardandoMaterial] = useState(false)
   const [eliminandoMaterialId, setEliminandoMaterialId] = useState<string | null>(null)
   const [fichas, setFichas] = useState<FichaRegistro[]>([])
+  const [incidencias, setIncidencias] = useState<any[]>([])
+  const [medidasPorInc, setMedidasPorInc] = useState<Record<string, any[]>>({})
   const [fichaVista, setFichaVista] = useState<FichaRegistro | null>(null)
 
   useEffect(() => {
@@ -191,8 +193,33 @@ export default function EmpleadoSolicitudDetallePage() {
           ;({ data, error } = retry)
         }
 
+        if ((!data || data.length === 0)) {
+          const retry2 = await supabase
+            .from('fases')
+            .select('id, nombre, orden')
+            .order('orden', { ascending: true })
+          ;({ data, error } = retry2)
+        }
+
         if (!error && data && data.length > 0) {
           setFases(data as FaseLite[])
+          if (!solicitud?.fase_id) {
+            const { data: sf } = await supabase
+              .from('solicitud_fases')
+              .select('producto_fase_id, estado')
+              .eq('solicitud_id', solicitud!.id)
+            const ids = (sf || []).map((x: any) => x.producto_fase_id).filter(Boolean)
+            if (ids.length) {
+              const { data: pf } = await supabase
+                .from('producto_fases')
+                .select('id, fase_id')
+                .in('id', ids)
+              const map = new Map((pf || []).map((x: any) => [x.id, x.fase_id]))
+              const current = (sf || []).find((x: any) => x.estado && x.estado !== 'completada') || sf?.[sf.length - 1]
+              const fid = current ? map.get(current.producto_fase_id) : null
+              if (fid) setSelectedFaseId(fid)
+            }
+          }
         }
       } catch {
         // ignore
@@ -202,50 +229,31 @@ export default function EmpleadoSolicitudDetallePage() {
   }, [solicitud])
 
   useEffect(() => {
-    if (!solicitud?.laboratorio_id || !solicitud.tipo) {
-      setProductoId(null)
+    if (!solicitud?.laboratorio_id || !solicitud.tipo || !solicitud.productos) {
+      setProductoIds([])
       return
     }
-    // Se guardan en constantes para conservar el estrechamiento de tipos
-    // dentro de la funcion async (corrige el error TS18047).
     const laboratorioId = solicitud.laboratorio_id
-
-    async function resolveProductoId() {
-      if (!solicitud?.productos) {
-        setProductoId(null)
-        return
-      }
+    async function resolveProductoIds() {
       try {
-        // Resuelve el producto igual que la vista de laboratorio: a partir del nombre del producto
-        // en el texto de la solicitud, no por categoria (evita ambigüedades cuando varios productos
-        // comparten la misma categoria y evita vincular solicitud_fases al producto equivocado).
-        const firstItem = String(solicitud.productos)
-          .split(';')
-          .map((p) => p.trim())
-          .filter(Boolean)[0] || ''
-        const m = firstItem.match(/^(.*?)\s+x(\d+)\s*\(([^)]*)\)/i)
-        const nombreProducto = (m ? m[1] : firstItem).trim()
-        if (!nombreProducto) {
-          setProductoId(null)
-          return
-        }
         const { data, error } = await supabase
           .from('productos')
           .select('id, titulo, nombre')
           .eq('laboratorio_id', laboratorioId)
         if (error || !data) {
-          setProductoId(null)
+          setProductoIds([])
           return
         }
-        const prod = data.find(
-          (p: any) => (p.titulo || '') === nombreProducto || (p.nombre || '') === nombreProducto,
-        )
-        setProductoId(prod ? prod.id : null)
+        const solProd = String(solicitud.productos).toLowerCase()
+        const ids = data
+          .filter((p: any) => solProd.includes((p.titulo || p.nombre || '').toLowerCase()))
+          .map((p: any) => p.id)
+        setProductoIds(ids)
       } catch {
-        setProductoId(null)
+        setProductoIds([])
       }
     }
-    resolveProductoId()
+    resolveProductoIds()
   }, [solicitud?.laboratorio_id, solicitud?.productos])
 
   useEffect(() => {
@@ -478,6 +486,26 @@ export default function EmpleadoSolicitudDetallePage() {
     }
   }
 
+  useEffect(() => {
+    if (!solicitud) {
+      setIncidencias([])
+      return
+    }
+    let cancelled = false
+    supabase
+      .from('incidencias')
+      .select('*')
+      .eq('solicitud_id', solicitud.id)
+      .order('fecha_creacion', { ascending: false })
+      .then(({ data, error }) => {
+        if (cancelled) return
+        if (!error && data) setIncidencias(data)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [solicitud])
+
   const selectedTeeth = useMemo(() => parseDientes(solicitud?.dientes), [solicitud?.dientes])
 
   const estadoOpt = ESTADO_OPTIONS.find((e) => e.value === solicitud?.estado)
@@ -685,7 +713,7 @@ export default function EmpleadoSolicitudDetallePage() {
             ) : (
               <InfoRow
                 label="Fase actual"
-                value={faseSeleccionada ? `${faseSeleccionada.orden}. ${faseSeleccionada.nombre}` : solicitud.fase_id || '—'}
+                value={faseSeleccionada ? `${faseSeleccionada.orden}. ${faseSeleccionada.nombre}` : selectedFaseId || solicitud.fase_id || '—'}
               />
             )}
             <InfoRow label="Progreso" value={`${progresoDerivado}%`} />
@@ -707,15 +735,15 @@ export default function EmpleadoSolicitudDetallePage() {
               </p>
             </div>
             <div className="sm:col-span-2">
-              <span className="text-xs text-muted-foreground">Productos</span>
+              <span className="block text-xs text-muted-foreground mb-1">Productos</span>
               <span className="text-sm text-foreground whitespace-pre-wrap">{stripPrices(solicitud.productos) || '—'}</span>
             </div>
             <div className="sm:col-span-2">
-              <span className="text-xs text-muted-foreground">Piezas enviadas</span>
+              <span className="block text-xs text-muted-foreground mb-1">Piezas enviadas</span>
               <span className="text-sm text-foreground whitespace-pre-wrap">{stripPrices(solicitud.piezas_enviadas) || '—'}</span>
             </div>
             <div className="sm:col-span-2">
-              <span className="text-xs text-muted-foreground">Indicaciones</span>
+              <span className="block text-xs text-muted-foreground mb-1">Indicaciones</span>
               <span className="text-sm text-foreground whitespace-pre-wrap">{solicitud.indicaciones || '—'}</span>
             </div>
             <div className="sm:col-span-2">
@@ -952,14 +980,14 @@ export default function EmpleadoSolicitudDetallePage() {
             <CardTitle className="text-base">Fases de fabricación</CardTitle>
           </CardHeader>
           <CardContent>
-            <FasesFabricacion
-              solicitudId={solicitud.id}
-              productoId={productoId}
-              laboratorioId={solicitud.laboratorio_id || undefined}
-              dientes={solicitud.dientes || undefined}
-              cantidad={1}
-              modo="empleado"
-              onSave={async (fase) => {
+<FasesFabricacion
+               solicitudId={solicitud.id}
+               productoIds={productoIds}
+               laboratorioId={solicitud.laboratorio_id || undefined}
+               dientes={solicitud.dientes || undefined}
+               cantidad={1}
+               modo="empleado"
+               onSave={async (fase) => {
                 if (!fase.faseId || !solicitud.id || !solicitud.laboratorio_id) return
                 try {
                   let archivoUrl: string | null = null
@@ -1084,9 +1112,89 @@ export default function EmpleadoSolicitudDetallePage() {
         </Card>
 
         <Card>
-          <CardContent className="space-y-4">
-            <div className="flex flex-col gap-2 sm:flex-row">
-              <textarea
+          <CardHeader><CardTitle className="text-base">Incidencias</CardTitle></CardHeader>
+          <CardContent>
+            {incidencias.length === 0 ? (
+              <span className="text-sm text-muted-foreground">Sin incidencias registradas</span>
+            ) : (
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border text-left text-xs text-muted-foreground">
+                    <th className="py-2 pr-2">Tipo</th>
+                    <th className="py-2 pr-2">Estado</th>
+                    <th className="py-2 pr-2">Descripción</th>
+                    <th className="py-2 pr-2">Fecha</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {incidencias.map((inc: any) => (
+                    <Fragment key={inc.id}>
+                      <tr
+                        key={inc.id}
+                        className="border-b border-border/50 cursor-pointer hover:bg-secondary/30"
+                        onClick={async () => {
+                          if (medidasPorInc[inc.id]) {
+                            setMedidasPorInc((prev) => {
+                              const next = { ...prev }
+                              delete next[inc.id]
+                              return next
+                            })
+                            return
+                          }
+                          const { data } = await supabase
+                            .from('incidencia_medidas')
+                            .select('*')
+                            .eq('incidencia_id', inc.id)
+                          setMedidasPorInc((prev) => ({ ...prev, [inc.id]: data || [] }))
+                        }}
+                      >
+                        <td className="py-2 pr-2 font-medium text-foreground">{inc.tipo}</td>
+                        <td className="py-2 pr-2 text-muted-foreground">{inc.estado}</td>
+                        <td className="py-2 pr-2 text-foreground">{inc.descripcion}</td>
+                        <td className="py-2 pr-2 text-muted-foreground whitespace-nowrap">{inc.fecha} {inc.hora}</td>
+                      </tr>
+                      {medidasPorInc[inc.id] && (
+                        <tr key={inc.id + '-m'}>
+                          <td colSpan={4} className="pb-2">
+                            <div className="overflow-x-auto ml-4">
+                              {medidasPorInc[inc.id].length === 0 ? (
+                                <span className="text-xs text-muted-foreground">Sin medidas registradas</span>
+                              ) : (
+                                <table className="w-full text-xs">
+                                  <thead>
+                                    <tr className="border-b border-border text-left text-muted-foreground">
+                                      <th className="py-1 pr-2">Medida tomada</th>
+                                      <th className="py-1 pr-2">Responsable</th>
+                                      <th className="py-1 pr-2">Fecha resolución</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {medidasPorInc[inc.id].map((m: any) => (
+                                      <tr key={m.id} className="border-b border-border/50">
+                                        <td className="py-1 pr-2 text-foreground">{m.medidas_tomadas}</td>
+                                        <td className="py-1 pr-2 text-muted-foreground">{m.responsable || '—'}</td>
+                                        <td className="py-1 pr-2 text-muted-foreground">{m.fecha_resolucion || '—'}</td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+           <CardContent className="space-y-4">
+             <div className="flex flex-col gap-2 sm:flex-row">
+               <textarea
                 value={nuevaObservacion}
                 onChange={(e) => setNuevaObservacion(e.target.value)}
                 placeholder="Escribir observación..."
@@ -1145,7 +1253,7 @@ export default function EmpleadoSolicitudDetallePage() {
         <Card>
           <CardContent className="grid gap-3 sm:grid-cols-2">
             <div className="sm:col-span-2">
-              <span className="text-xs text-muted-foreground">Encuesta posadaptación</span>
+              <span className="block text-xs text-muted-foreground mb-1">Encuesta posadaptación</span>
               {encuestas.posAdaptacion ? (
                 <div className="mt-1 rounded-lg border border-border bg-secondary/30 p-3">
                   <p className="text-sm font-medium text-foreground">Encuesta registrada</p>
@@ -1188,7 +1296,7 @@ export default function EmpleadoSolicitudDetallePage() {
               )}
             </div>
             <div className="sm:col-span-2">
-              <span className="text-xs text-muted-foreground">Buzón de quejas / reclamos / sugerencias</span>
+              <span className="block text-xs text-muted-foreground mb-1">Buzón de quejas / reclamos / sugerencias</span>
               {encuestas.buzon ? (
                 <div className="mt-1 rounded-lg border border-border bg-secondary/30 p-3">
                   <p className="text-sm font-medium text-foreground">Solicitud registrada</p>

@@ -12,6 +12,7 @@ interface Incidencia {
   id: string
   codigo: string | null
   solicitud_id: string
+  solicitud_codigo_trazabilidad?: string | null
   tipo: string | null
   fecha: string | null
   hora: string | null
@@ -98,7 +99,8 @@ export default function EmpleadoIncidenciasPage() {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-border">
-                      <th className="text-left py-2 px-2 text-xs text-muted-foreground font-medium">Código</th>
+                       <th className="text-left py-2 px-2 text-xs text-muted-foreground font-medium">Código</th>
+                       <th className="text-left py-2 px-2 text-xs text-muted-foreground font-medium">Solicitud</th>
                       <th className="text-left py-2 px-2 text-xs text-muted-foreground font-medium">Tipo</th>
                       <th className="text-left py-2 px-2 text-xs text-muted-foreground font-medium">Fecha</th>
                       <th className="text-left py-2 px-2 text-xs text-muted-foreground font-medium">Hora</th>
@@ -110,7 +112,8 @@ export default function EmpleadoIncidenciasPage() {
                   <tbody>
                     {incidencias.map((inc) => (
                       <tr key={inc.id} className="border-b border-border/50 hover:bg-muted/50">
-                        <td className="py-2 px-2 font-mono text-xs">{inc.codigo || '—'}</td>
+                         <td className="py-2 px-2 font-mono text-xs">{inc.codigo || '—'}</td>
+                         <td className="py-2 px-2 font-mono text-xs">{inc.solicitud_codigo_trazabilidad || inc.solicitud_id}</td>
                         <td className="py-2 px-2">{inc.tipo || '—'}</td>
                         <td className="py-2 px-2">{formatFecha(inc.fecha)}</td>
                         <td className="py-2 px-2">{inc.hora || '—'}</td>

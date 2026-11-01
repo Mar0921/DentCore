@@ -128,14 +128,14 @@ export function SubscribeFlow({ initialPlan }: { initialPlan: PlanId }) {
       // Upload logo if provided
       if (account.logo) {
         const { data: uploadData, error: uploadError } = await supabase.storage
-          .from('logos-laboratorios')
+          .from('logos-laboratorio')
           .upload(`temp/${Date.now()}_${account.logo.name}`, account.logo)
 
         if (uploadError) {
           console.error('Logo upload error:', uploadError)
         } else if (uploadData) {
           const { data: publicUrl } = supabase.storage
-            .from('logos-laboratorios')
+            .from('logos-laboratorio')
             .getPublicUrl(uploadData.path)
           logoUrl = publicUrl.publicUrl
         }
