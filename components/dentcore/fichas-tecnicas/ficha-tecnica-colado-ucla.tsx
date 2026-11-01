@@ -1,8 +1,9 @@
 "use client"
 
-import { useState, useCallback } from "react"
+import { useState, useCallback, useEffect } from "react"
 import { Download, Pencil, Check } from "lucide-react"
 import { Seccion, CampoEditable, CAMPOS_EDITABLES } from "./types"
+import { supabase } from "@/lib/supabase"
 
 type Props = {
   secciones: Seccion[]
@@ -14,6 +15,7 @@ type Props = {
   showToolbar?: boolean
   dientes?: string[]
   codigoTrazabilidad?: string
+  firmas?: { nombre: string; rol: string; firma_data_url: string }[]
 }
 
 function EditableField({
@@ -184,7 +186,21 @@ export function FichaTecnicaColadoUcla({
   showToolbar = true,
   dientes,
   codigoTrazabilidad = "",
+  firmas,
 }: Props) {
+  const [firmasInternas, setFirmasInternas] = useState<any[]>([])
+  useEffect(() => {
+    if (!firmas) {
+      (async () => {
+        const { data: lab } = await supabase.from('laboratorio').select('id').limit(1)
+        if (lab && lab.length > 0) {
+          const { data } = await supabase.from('firmas').select('*').eq('laboratorio_id', lab[0].id)
+          if (data) setFirmasInternas(data)
+        }
+      })()
+    }
+  }, [firmas])
+  const firmasUsar = firmas || firmasInternas
   const getCampo = (seccionIndex: number, campoIndex: number): CampoEditable | undefined => {
     return secciones[seccionIndex]?.campos[campoIndex]
   }
@@ -211,9 +227,9 @@ export function FichaTecnicaColadoUcla({
   }
 
   const seccionControlCambios = secciones.find((s) => s.titulo === "CONTROL DE CAMBIOS")
-  const seccionElaboro = secciones.find((s) => s.titulo === "ELABORÓ")
-  const seccionReviso = secciones.find((s) => s.titulo === "REVISÓ")
-  const seccionAprobo = secciones.find((s) => s.titulo === "APROBÓ")
+  const seccionElaboro = secciones.find((s) => s.titulo === "ELABORO")
+  const seccionReviso = secciones.find((s) => s.titulo === "Reviso")
+  const seccionAprobo = secciones.find((s) => s.titulo === "Aprobó")
 
   return (
     <div>
@@ -422,9 +438,7 @@ export function FichaTecnicaColadoUcla({
           </div>
         )}
 
-        {[seccionElaboro, seccionReviso, seccionAprobo]
-          .filter(Boolean)
-          .length > 0 && (
+        {true && (
             <table data-block className="w-full border-collapse text-[11px]">
               <thead>
                 <tr>
@@ -435,35 +449,7 @@ export function FichaTecnicaColadoUcla({
                 </tr>
               </thead>
               <tbody>
-                {[seccionElaboro, seccionReviso, seccionAprobo]
-                  .filter(Boolean)
-                  .map((seccion) => {
-                    if (!seccion) return null
-                    return (
-                      <tr key={seccion.titulo}>
-                        <Td className="font-bold h-20 align-middle">{seccion.titulo}</Td>
-                        <Td className="h-20 align-middle">
-                          <div className="min-h-[1.5rem] overflow-hidden">
-                            {seccion.campos[0]?.value || <span className="text-neutral-400">Sin información</span>}
-                          </div>
-                        </Td>
-                        <Td className="h-20 align-middle">
-                          <div className="min-h-[1.5rem] overflow-hidden">
-                            {seccion.campos[1]?.value || <span className="text-neutral-400">Sin información</span>}
-                          </div>
-                        </Td>
-                        <Td className="h-20 align-middle">
-                          <div className="min-h-[1.5rem] overflow-hidden">
-                            {seccion.campos[2]?.value && seccion.campos[2].value.startsWith("/") ? (
-                              <img src={seccion.campos[2].value} alt="Firma" className="h-20 object-contain" />
-                            ) : (
-                              seccion.campos[2]?.value || <span className="text-neutral-400">Sin información</span>
-                            )}
-                          </div>
-                        </Td>
-                      </tr>
-                    )
-                  })}
+                {["ELABORO", "Reviso", "Aprobó"].map((label, i) => { const cargo = ["Director tecnico", "Asistente técnico", "Director tecnico"][i]; const firma = (firmasUsar || []).find((f: any) => f.rol === cargo); return (<tr key={label}><td className="border border-neutral-300 p-2 font-bold h-20 align-middle">{label}</td><td className="border border-neutral-300 p-2 h-20 align-middle">{firma?.nombre || ""}</td><td className="border border-neutral-300 p-2 h-20 align-middle">{cargo}</td><td className="border border-neutral-300 p-2 h-20 align-middle">{firma?.firma_data_url ? <img src={firma.firma_data_url} alt={firma.nombre} className="h-16 object-contain" /> : null}</td></tr>) })}
               </tbody>
             </table>
           )}

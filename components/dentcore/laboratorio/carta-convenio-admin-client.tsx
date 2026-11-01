@@ -112,7 +112,8 @@ export function CartaConvenioAdminClient() {
     window.print()
   }
 
-  const firmaDT = firmas[1] || firmas[0] || null
+  const firmaRL = firmas.find((f) => f.rol === 'Representante legal') || null
+  const firmaDT = firmas.find((f) => f.rol === 'D.T LABORATORIO DENTAL') || null
 
   return (
     <div className="max-w-4xl mx-auto p-6 space-y-6">
@@ -178,17 +179,17 @@ export function CartaConvenioAdminClient() {
             <div className="grid grid-cols-2 gap-12">
               <div className="text-center space-y-2">
                 <div className="border-b border-black h-20 flex items-end justify-center">
-                  {firmas[0] && (
-                    <img src={firmas[0].firma_data_url} alt="Firma Representante Legal" className="h-16 object-contain" />
+                  {firmaRL && (
+                    <img src={firmaRL.firma_data_url} alt="Firma Representante Legal" className="h-16 object-contain" />
                   )}
                 </div>
                 <div className="space-y-1">
                   <p className="font-semibold">__________________________________</p>
                   <p className="font-bold">Representante legal</p>
-                  {firmas[0] && (
+                  {firmaRL && (
                     <>
-                      <p className="text-xs">{firmas[0].nombre}</p>
-                      {firmas[0].rol && <p className="text-xs">{firmas[0].rol}</p>}
+                      <p className="text-xs">{firmaRL.nombre}</p>
+                      {firmaRL.rol && <p className="text-xs">{firmaRL.rol}</p>}
                     </>
                   )}
                 </div>

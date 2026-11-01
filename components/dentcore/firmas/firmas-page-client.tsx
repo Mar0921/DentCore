@@ -8,6 +8,12 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Card, CardContent } from '@/components/ui/card'
 import { Plus, Edit, Trash2, PenTool, RotateCcw } from 'lucide-react'
 
+const ROLES_REQUERIDOS = [
+  'Representante legal',
+  'D.T LABORATORIO DENTAL',
+  'Director tecnico',
+  'Asistente técnico',
+]
 export function FirmasPageClient() {
   const [firmas, setFirmas] = useState<any[]>([])
   const [laboratorioId, setLaboratorioId] = useState<string | null>(null)
@@ -159,6 +165,14 @@ export function FirmasPageClient() {
         alert('El nombre es obligatorio')
         return
       }
+      if (!formData.rol || !ROLES_REQUERIDOS.includes(formData.rol)) {
+        alert('El rol es obligatorio y debe ser uno de los requeridos')
+        return
+      }
+      if (firmas.some((f) => f.rol === formData.rol && (!editing || f.id !== editing.id))) {
+        alert('Ya existe una firma registrada para este rol')
+        return
+      }
       const firmaDataUrl = editing ? formData.firma_data_url : saveFromCanvas()
       if (!firmaDataUrl || firmaDataUrl === 'data:,') {
         alert('Debe dibujar la firma')
@@ -276,12 +290,17 @@ export function FirmasPageClient() {
               />
             </div>
             <div>
-              <label className="text-sm font-medium">Rol del profesional</label>
-              <Input
+              <label className="text-sm font-medium">Rol del profesional (obligatorio)</label>
+              <select
                 value={formData.rol}
                 onChange={(e) => setFormData({ ...formData, rol: e.target.value })}
-                placeholder="Ej. Técnico, Protésico, Director Técnico"
-              />
+                className="w-full border rounded-md px-3 py-2 text-sm bg-background"
+              >
+                <option value="">Seleccione un rol</option>
+                {ROLES_REQUERIDOS.map((r) => (
+                  <option key={r} value={r}>{r}</option>
+                ))}
+              </select>
             </div>
             <div>
               <label className="text-sm font-medium">Título / Cargo (opcional)</label>

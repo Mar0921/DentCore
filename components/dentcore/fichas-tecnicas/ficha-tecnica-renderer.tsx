@@ -139,9 +139,9 @@ export function FichaTecnicaRenderer({
   }
 
   const seccionControlCambios = secciones.find((s) => s.titulo === "CONTROL DE CAMBIOS")
-  const seccionElaboro = secciones.find((s) => s.titulo === "ELABORÓ")
-  const seccionReviso = secciones.find((s) => s.titulo === "REVISÓ")
-  const seccionAprobo = secciones.find((s) => s.titulo === "APROBÓ")
+  const seccionElaboro = secciones.find((s) => s.titulo === "ELABORO")
+  const seccionReviso = secciones.find((s) => s.titulo === "Reviso")
+  const seccionAprobo = secciones.find((s) => s.titulo === "Aprobó")
 
   return (
     <div>
@@ -367,8 +367,7 @@ export function FichaTecnicaRenderer({
           </div>
         )}
 
-        {[seccionElaboro, seccionReviso, seccionAprobo].filter(Boolean).length > 0 && (
-          <table className="w-full border-collapse text-[11px]">
+        <table className="w-full border-collapse text-[11px]">
             <thead>
               <tr>
                 <th className="border border-neutral-300 bg-neutral-100 p-2 text-left font-bold w-32" />
@@ -384,44 +383,18 @@ export function FichaTecnicaRenderer({
               </tr>
             </thead>
             <tbody>
-              {[seccionElaboro, seccionReviso, seccionAprobo]
-                .filter(Boolean)
-                .map((seccion) => {
-                  if (!seccion) return null
+              {["ELABORO", "Reviso", "Aprobó"].map((label, i) => {
+                  const cargo = ["Director tecnico", "Asistente técnico", "Director tecnico"][i]
                   return (
-                    <tr key={seccion.titulo}>
-                      <td className="border border-neutral-300 p-2 font-bold h-20 align-middle">
-                        {seccion.titulo}
-                      </td>
-                      <td className="border border-neutral-300 p-2 h-20 align-middle">
-                        <div className="min-h-[1.5rem] overflow-hidden">
-                          {seccion.campos[0]?.value || <span className="text-neutral-400">Sin información</span>}
-                        </div>
-                      </td>
-                      <td className="border border-neutral-300 p-2 h-20 align-middle">
-                        <div className="min-h-[1.5rem] overflow-hidden">
-                          {seccion.campos[1]?.value || <span className="text-neutral-400">Sin información</span>}
-                        </div>
-                      </td>
-                      <td className="border border-neutral-300 p-2 h-20 align-middle">
-                        <div className="min-h-[1.5rem] overflow-hidden">
-                          {seccion.campos[2]?.value && seccion.campos[2].value.startsWith("/") ? (
-                            <img
-                              src={seccion.campos[2].value}
-                              alt="Firma"
-                              className="h-20 object-contain"
-                            />
-                          ) : (
-                            seccion.campos[2]?.value || <span className="text-neutral-400">Sin información</span>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  )
-                })}
+                <tr key={label}>
+                  <td className="border border-neutral-300 p-2 font-bold h-20 align-middle">{label}</td>
+                  <td className="border border-neutral-300 p-2 h-20 align-middle" />
+                  <td className="border border-neutral-300 p-2 h-20 align-middle">{cargo}</td>
+                  <td className="border border-neutral-300 p-2 h-20 align-middle" />
+                </tr>
+              )})}
             </tbody>
           </table>
-        )}
       </article>
     </div>
   )
