@@ -169,6 +169,7 @@ export function AppShell({ children, sidebar = 'trabajos', showSidebar = true }:
   }
 
   useEffect(() => {
+    loadUserInfo()
     if (sidebar === 'invitado') {
       const email = localStorage.getItem('labUserEmail')
       if (email) {
@@ -273,7 +274,7 @@ export function AppShell({ children, sidebar = 'trabajos', showSidebar = true }:
               <Button variant="ghost" className="gap-1.5 text-xs">
                 <User className="size-4" />
                 <span className="font-medium">{invitadoNombre || 'Invitado'}</span>
-                <span className="text-muted-foreground">({invitadoEmail || 'â€”'})</span>
+                <span className="text-muted-foreground">({invitadoEmail || '—'})</span>
               </Button>
             ) : (
               <>

@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
 import { Save, Image, Upload } from 'lucide-react'
 
 const ESTADO_OPTIONS = [
@@ -46,14 +47,13 @@ interface FasesFabricacionProps {
   laboratorioId?: string | null
   dientes?: string | null
   cantidad?: number | null
+  modo?: 'empleado' | 'laboratorio'
   onSave?: (fase: GuardarFasePayload) => void | Promise<void>
   className?: string
 }
 
 const SELECT_CLASS =
   "w-full rounded-md border border-border bg-card px-2 py-1.5 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/30"
-const DATE_CLASS =
-  "rounded-md border border-border bg-card px-2 py-1.5 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/30"
 
 export function FasesFabricacion({
   solicitudId,
@@ -61,6 +61,7 @@ export function FasesFabricacion({
   laboratorioId,
   dientes,
   cantidad,
+  modo = 'laboratorio',
   onSave,
   className,
 }: FasesFabricacionProps) {
@@ -209,6 +210,19 @@ export function FasesFabricacion({
     [],
   )
 
+  // Convierte una fecha arbitraria (ISO, Date, o yyyy-mm-dd) a yyyy-mm-dd para el input type=date
+  const toYMD = (value?: string | null): string => {
+    if (!value) return ''
+    // Si ya viene en formato yyyy-mm-dd (10 chars, guiones en pos 4 y 7)
+    if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value
+    const d = new Date(value)
+    if (isNaN(d.getTime())) return ''
+    const yyyy = d.getFullYear()
+    const mm = String(d.getMonth() + 1).padStart(2, '0')
+    const dd = String(d.getDate()).padStart(2, '0')
+    return `${yyyy}-${mm}-${dd}`
+  }
+
   const handleChangeFecha = useCallback(
     (id: string, field: 'fechaFinalizacion' | 'fechaPrueba', value: string) => {
       setFases((prev) =>
@@ -336,27 +350,25 @@ export function FasesFabricacion({
                     </span>
                   </td>
                   <td className="px-4 py-3">
-                    <input
-                      type="text"
-                      placeholder="mm/dd/yyyy"
-                      value={fase.fechaFinalizacion}
+                    <Input
+                      type="date"
+                      value={toYMD(fase.fechaFinalizacion)}
                       onChange={(e) =>
                         handleChangeFecha(fase.id, 'fechaFinalizacion', e.target.value)
                       }
-                      className={DATE_CLASS}
-                      disabled={isCompletado(fase.estado)}
+                      className={SELECT_CLASS}
+                      disabled={!!fase.evidenciaUrl}
                     />
                   </td>
                   <td className="px-4 py-3">
-                    <input
-                      type="text"
-                      placeholder="mm/dd/yyyy"
-                      value={fase.fechaPrueba}
+                    <Input
+                      type="date"
+                      value={toYMD(fase.fechaPrueba)}
                       onChange={(e) =>
                         handleChangeFecha(fase.id, 'fechaPrueba', e.target.value)
                       }
-                      className={DATE_CLASS}
-                      disabled={isCompletado(fase.estado)}
+                      className={SELECT_CLASS}
+                      disabled={modo === 'empleado' || !!fase.evidenciaUrl}
                     />
                   </td>
                   <td className="px-4 py-3 whitespace-nowrap">

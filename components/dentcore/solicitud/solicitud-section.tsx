@@ -573,17 +573,8 @@ export function SolicitudSection({
               />
             )}
           </div>
-          <div className="grid gap-1.5">
-            <label className="text-sm font-medium text-primary">CORREO:</label>
-            <Input
-              type="email"
-              value={formData.correo}
-              onChange={(e) => onFormDataChange({ correo: e.target.value })}
-              placeholder="correo@ejemplo.com"
-            />
-          </div>
-          <div className="grid gap-1.5">
-            <label className="text-sm font-medium text-primary">DIRECCIÓN:</label>
+           <div className="grid gap-1.5">
+             <label className="text-sm font-medium text-primary">DIRECCIÓN:</label>
             {clienteSeleccionado ? (
               <>
                 <select
@@ -634,13 +625,47 @@ export function SolicitudSection({
                 placeholder="Dirección"
               />
             )}
-          </div>
+           </div>
+             <div className="grid gap-1.5">
+               <label className="text-sm font-medium text-primary">TELÉFONO:</label>
+              <Input
+                type="tel"
+                value={formData.telefono}
+                onChange={(e) => onFormDataChange({ telefono: e.target.value })}
+               placeholder="Teléfono"
+             />
+           </div>
+           <div className="grid gap-1.5">
+             <label className="text-sm font-medium text-primary">CORREO:</label>
+             <Input
+               type="email"
+               value={formData.correo}
+               onChange={(e) => onFormDataChange({ correo: e.target.value })}
+               placeholder="correo@ejemplo.com"
+             />
+           </div>
+           <div className="grid gap-1.5">
+             <label className="text-sm font-medium text-primary">REGISTRO MÉDICO:</label>
+             <Input
+               value={formData.registroMedico}
+               onChange={(e) => onFormDataChange({ registroMedico: e.target.value })}
+               placeholder="Registro médico"
+             />
+           </div>
            <div className="grid gap-1.5">
              <label className="text-sm font-medium text-primary">PACIENTE:</label>
              <Input
                value={formData.paciente}
                onChange={(e) => onFormDataChange({ paciente: e.target.value })}
                placeholder="Nombre del paciente"
+             />
+           </div>
+           <div className="grid gap-1.5">
+             <label className="text-sm font-medium text-primary">CC .:</label>
+             <Input
+               value={formData.ccPaciente}
+               onChange={(e) => onFormDataChange({ ccPaciente: e.target.value })}
+               placeholder="CC."
              />
            </div>
            <div className="grid gap-1.5">
@@ -727,32 +752,7 @@ export function SolicitudSection({
               />
             </div>
             <div className="grid gap-1.5">
-             <label className="text-sm font-medium text-primary">REGISTRO MÉDICO:</label>
-             <Input
-               value={formData.registroMedico}
-               onChange={(e) => onFormDataChange({ registroMedico: e.target.value })}
-               placeholder="Registro médico"
-             />
-           </div>
-           <div className="grid gap-1.5">
-             <label className="text-sm font-medium text-primary">TELÉFONO:</label>
-             <Input
-               type="tel"
-               value={formData.telefono}
-               onChange={(e) => onFormDataChange({ telefono: e.target.value })}
-               placeholder="Teléfono"
-             />
-           </div>
-           <div className="grid gap-1.5">
-             <label className="text-sm font-medium text-primary">CC .:</label>
-             <Input
-               value={formData.ccPaciente}
-               onChange={(e) => onFormDataChange({ ccPaciente: e.target.value })}
-               placeholder="CC."
-             />
-           </div>
-           <div className="grid gap-1.5">
-             <label className="text-sm font-medium text-primary">FIRMA DE ODONTÓLOGO (A):</label>
+              <label className="text-sm font-medium text-primary">FIRMA DE ODONTÓLOGO (A):</label>
              <div className="text-xs text-muted-foreground">Dibuja tu firma aquí</div>
              <SignatureCanvas
                value={formData.firma}
@@ -786,12 +786,12 @@ export function SolicitudSection({
                 type="radio"
                 id={`${stableIdPrefix}-impresion-intraoral`}
                 name={`${stableIdPrefix}-impresion`}
-                value="Intraoral"
-                checked={formData.impresionTipo === 'Intraoral'}
+                 value="Escaneo digital"
+                 checked={formData.impresionTipo === 'Escaneo digital'}
                 onChange={(e) => onFormDataChange({ impresionTipo: e.target.value })}
                 className="h-4 w-4"
               />
-              <label htmlFor={`${stableIdPrefix}-impresion-intraoral`} className="text-sm cursor-pointer">Intraoral</label>
+               <label htmlFor={`${stableIdPrefix}-impresion-intraoral`} className="text-sm cursor-pointer">Escaneo digital</label>
             </div>
           </div>
         </CardContent>
@@ -810,11 +810,10 @@ export function SolicitudSection({
             >
               <option value="">Selecciona el tipo de trabajo</option>
               {TIPOS_TRABAJO_PRINCIPAL.map((tipo) => (
-                <option key={tipo} value={tipo}>
+                <option key={tipo} value={tipo} disabled={!productosPorCategoria[tipo] || productosPorCategoria[tipo].length === 0} style={{ color: (!productosPorCategoria[tipo] || productosPorCategoria[tipo].length === 0) ? '#9ca3af' : undefined }}>
                   {tipo}
                 </option>
               ))}
-              <option value="Otro">Otro</option>
             </select>
           </div>
 

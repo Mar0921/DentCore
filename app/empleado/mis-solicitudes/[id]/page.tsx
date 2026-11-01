@@ -207,29 +207,46 @@ export default function EmpleadoSolicitudDetallePage() {
       return
     }
     // Se guardan en constantes para conservar el estrechamiento de tipos
-    // dentro de la función async (corrige el error TS18047).
+    // dentro de la funcion async (corrige el error TS18047).
     const laboratorioId = solicitud.laboratorio_id
-    const categoria = solicitud.tipo
 
     async function resolveProductoId() {
+      if (!solicitud?.productos) {
+        setProductoId(null)
+        return
+      }
       try {
+        // Resuelve el producto igual que la vista de laboratorio: a partir del nombre del producto
+        // en el texto de la solicitud, no por categoria (evita ambigüedades cuando varios productos
+        // comparten la misma categoria y evita vincular solicitud_fases al producto equivocado).
+        const firstItem = String(solicitud.productos)
+          .split(';')
+          .map((p) => p.trim())
+          .filter(Boolean)[0] || ''
+        const m = firstItem.match(/^(.*?)\s+x(\d+)\s*\(([^)]*)\)/i)
+        const nombreProducto = (m ? m[1] : firstItem).trim()
+        if (!nombreProducto) {
+          setProductoId(null)
+          return
+        }
         const { data, error } = await supabase
           .from('productos')
-          .select('id')
+          .select('id, titulo, nombre')
           .eq('laboratorio_id', laboratorioId)
-          .eq('categoria', categoria)
-          .limit(1)
-        if (!error && data && data.length > 0) {
-          setProductoId(data[0].id)
-        } else {
+        if (error || !data) {
           setProductoId(null)
+          return
         }
+        const prod = data.find(
+          (p: any) => (p.titulo || '') === nombreProducto || (p.nombre || '') === nombreProducto,
+        )
+        setProductoId(prod ? prod.id : null)
       } catch {
         setProductoId(null)
       }
     }
     resolveProductoId()
-  }, [solicitud?.laboratorio_id, solicitud?.tipo])
+  }, [solicitud?.laboratorio_id, solicitud?.productos])
 
   useEffect(() => {
     if (!solicitud) return
@@ -941,6 +958,7 @@ export default function EmpleadoSolicitudDetallePage() {
               laboratorioId={solicitud.laboratorio_id || undefined}
               dientes={solicitud.dientes || undefined}
               cantidad={1}
+              modo="empleado"
               onSave={async (fase) => {
                 if (!fase.faseId || !solicitud.id || !solicitud.laboratorio_id) return
                 try {

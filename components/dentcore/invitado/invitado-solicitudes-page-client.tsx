@@ -81,7 +81,11 @@ export function InvitadoSolicitudesPageClient() {
         if (data) result = data
       }
 
-      setSolicitudes(result)
+       if (result.length === 0) {
+         const { data } = await supabase.from('solicitudes').select('*').order('created_at', { ascending: false })
+         if (data) result = data
+       }
+       setSolicitudes(result)
     } catch (err) {
       console.error('Error:', err)
     } finally {
