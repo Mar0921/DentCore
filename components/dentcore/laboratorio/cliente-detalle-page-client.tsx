@@ -15,6 +15,8 @@ export function ClienteDetallePageClient() {
   const [carta, setCarta] = useState<any>(null)
   const [solicitudes, setSolicitudes] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+  const [editing, setEditing] = useState(false)
+  const [form, setForm] = useState<any>({})
 
   useEffect(() => {
     if (id) loadCliente()
@@ -24,7 +26,7 @@ export function ClienteDetallePageClient() {
     setLoading(true)
     try {
       const { data } = await supabase.from('cliente').select('*').eq('id', id).maybeSingle()
-      if (data) setCliente(data)
+      if (data) { setCliente(data); setForm(data) }
       const { data: cartaData } = await supabase.from('cartas_convenio').select('*').eq('cliente_id', id).maybeSingle()
       if (cartaData) setCarta(cartaData)
       
@@ -96,6 +98,11 @@ export function ClienteDetallePageClient() {
     }
   }
 
+async function saveCliente() {
+    const { error } = await supabase.from('cliente').update(form).eq('id', id)
+    if (!error) { setCliente(form); setEditing(false) }
+  }
+
   if (loading) {
     return <div className="p-6 text-center text-muted-foreground">Cargando...</div>
   }
@@ -147,49 +154,81 @@ export function ClienteDetallePageClient() {
             Datos del Cliente
           </CardTitle>
         </CardHeader>
+        <div className="px-6 pb-2 flex justify-end gap-2">
+          {editing ? (
+            <>
+              <Button size="sm" onClick={saveCliente}>Guardar</Button>
+              <Button size="sm" variant="outline" onClick={() => { setEditing(false); setForm(cliente) }}>Cancelar</Button>
+            </>
+          ) : (
+            <Button size="sm" variant="outline" onClick={() => setEditing(true)}>Editar</Button>
+          )}
+        </div>
         <CardContent className="grid gap-4 md:grid-cols-2">
-          <div className="flex items-center gap-2">
-            <User className="size-4 text-muted-foreground" />
-            <div>
-              <p className="text-xs text-muted-foreground">Nombre</p>
-              <p className="text-sm font-medium">{cliente.nombre || '—'}</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <Mail className="size-4 text-muted-foreground" />
-            <div>
-              <p className="text-xs text-muted-foreground">Email</p>
-              <p className="text-sm font-medium">{cliente.email || '—'}</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <Phone className="size-4 text-muted-foreground" />
-            <div>
-              <p className="text-xs text-muted-foreground">Teléfono</p>
-              <p className="text-sm font-medium">{cliente.telefono || cliente.celular || '—'}</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <Building2 className="size-4 text-muted-foreground" />
-            <div>
-              <p className="text-xs text-muted-foreground">Clínica</p>
-              <p className="text-sm font-medium">{cliente.clinica || '—'}</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <FileText className="size-4 text-muted-foreground" />
-            <div>
-              <p className="text-xs text-muted-foreground">Locación Extra</p>
-              <p className="text-sm font-medium">{cliente.locacion_extra || '—'}</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <FileText className="size-4 text-muted-foreground" />
-            <div>
-              <p className="text-xs text-muted-foreground">Dirección Extra</p>
-              <p className="text-sm font-medium">{cliente.direccion_extra || '—'}</p>
-            </div>
-          </div>
+{editing ? (
+            <>
+              {['nombre','email','telefono','clinica','locacion_extra','direccion_extra','registro_medico'].map((k) => (
+                <div key={k} className="flex items-center gap-2 md:col-span-2">
+                  <div className="w-full">
+                    <p className="text-xs text-muted-foreground">{k}</p>
+                    <input className="w-full border rounded px-2 py-1 text-sm" value={form?.[k] || ''} onChange={(e) => setForm({ ...form, [k]: e.target.value })} />
+                  </div>
+                </div>
+              ))}
+            </>
+          ) : (
+            <>
+              <div className="flex items-center gap-2">
+                <User className="size-4 text-muted-foreground" />
+                <div>
+                  <p className="text-xs text-muted-foreground">Nombre</p>
+                  <p className="text-sm font-medium">{cliente.nombre || '—'}</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <Mail className="size-4 text-muted-foreground" />
+                <div>
+                  <p className="text-xs text-muted-foreground">Email</p>
+                  <p className="text-sm font-medium">{cliente.email || '—'}</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <Phone className="size-4 text-muted-foreground" />
+                <div>
+                  <p className="text-xs text-muted-foreground">Teléfono</p>
+                  <p className="text-sm font-medium">{cliente.telefono || cliente.celular || '—'}</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <Building2 className="size-4 text-muted-foreground" />
+                <div>
+                  <p className="text-xs text-muted-foreground">Clínica</p>
+                  <p className="text-sm font-medium">{cliente.clinica || '—'}</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <FileText className="size-4 text-muted-foreground" />
+                <div>
+                  <p className="text-xs text-muted-foreground">Locación Extra</p>
+                  <p className="text-sm font-medium">{cliente.locacion_extra || '—'}</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <FileText className="size-4 text-muted-foreground" />
+                <div>
+                  <p className="text-xs text-muted-foreground">Dirección Extra</p>
+                  <p className="text-sm font-medium">{cliente.direccion_extra || '—'}</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 md:col-span-2">
+                <FileText className="size-4 text-muted-foreground" />
+                <div>
+                  <p className="text-xs text-muted-foreground">Registro Médico</p>
+                  <p className="text-sm font-medium whitespace-pre-wrap">{cliente.registro_medico || '—'}</p>
+                </div>
+              </div>
+            </>
+          )}
         </CardContent>
       </Card>
       <Card>

@@ -150,6 +150,7 @@ export function AppShell({ children, sidebar = 'trabajos', showSidebar = true }:
       localStorage.removeItem('labUserEmail')
       localStorage.removeItem('labUserName')
       localStorage.removeItem('labName')
+      localStorage.removeItem('labId')
       localStorage.removeItem('labUserType')
     }
     router.push('/iniciar-sesion')

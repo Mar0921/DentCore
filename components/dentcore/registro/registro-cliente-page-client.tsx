@@ -24,6 +24,7 @@ export function RegistroClientePageClient() {
     clinica: "",
     locacion_extra: "",
     direccion_extra: "",
+    registro_medico: "",
     password: "",
     confirmPassword: "",
   })
@@ -63,18 +64,19 @@ export function RegistroClientePageClient() {
        const response = await fetch('/api/registro-cliente', {
          method: 'POST',
          headers: { 'Content-Type': 'application/json' },
-         body: JSON.stringify({
-           nombre: formData.nombre,
-           email: formData.email,
-           telefono: formData.telefono,
-           calle: formData.calle,
-           localidad: formData.localidad,
-           clinica: formData.clinica,
-           locacion_extra: formData.locacion_extra,
-           direccion_extra: formData.direccion_extra,
-           password: formData.password,
-           laboratorio_id: labs[0].id,
-         }),
+          body: JSON.stringify({
+            nombre: formData.nombre,
+            email: formData.email,
+            telefono: formData.telefono,
+            calle: formData.calle,
+            localidad: formData.localidad,
+            clinica: formData.clinica,
+            locacion_extra: formData.locacion_extra,
+            direccion_extra: formData.direccion_extra,
+            registro_medico: formData.registro_medico,
+            password: formData.password,
+            laboratorio_id: labs[0].id,
+          }),
        })
        const result = await response.json()
        if (!response.ok) throw new Error(result.error || 'No se pudo registrar.')
@@ -186,6 +188,14 @@ export function RegistroClientePageClient() {
                 value={formData.direccion_extra}
                 onChange={(e) => setFormData({ ...formData, direccion_extra: e.target.value })}
                 placeholder="Direccion extra"
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium">Registro Médico</label>
+              <Input
+                value={formData.registro_medico}
+                onChange={(e) => setFormData({ ...formData, registro_medico: e.target.value })}
+                placeholder="Antecedentes médicos / alergias"
               />
             </div>
         <div>

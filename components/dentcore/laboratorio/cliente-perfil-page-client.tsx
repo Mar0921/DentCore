@@ -12,20 +12,17 @@ import { ChevronLeft, Save, RefreshCw, Trash2, User, ExternalLink } from 'lucide
 
 interface Cliente {
   id: string
-  codigo: string | null
   nombre: string | null
   calle: string | null
   localidad: string | null
   locacion_extra: string | null
   direccion_extra: string | null
   telefono: string | null
-  celular: string | null
   email: string | null
   clinica: string | null
   laboratorio_id: string | null
   tiene_acceso: boolean | null
-  created_at: string
-  updated_at: string
+  registro_medico: string | null
 }
 
 interface Solicitud {
@@ -114,17 +111,16 @@ export function ClientePerfilPageClient({ empleado = false }: { empleado?: boole
       if (!error && data) {
         setCliente(data as Cliente)
         setForm({
-          codigo: data.codigo,
           nombre: data.nombre,
           calle: data.calle,
           localidad: data.localidad,
           locacion_extra: data.locacion_extra,
           direccion_extra: data.direccion_extra,
           telefono: data.telefono,
-          celular: data.celular,
           email: data.email,
           clinica: data.clinica,
           tiene_acceso: data.tiene_acceso ?? false,
+          registro_medico: data.registro_medico,
         })
          await loadSolicitudes(data as Cliente)
        } else {
@@ -199,17 +195,16 @@ export function ClientePerfilPageClient({ empleado = false }: { empleado?: boole
       const { error } = await supabase
         .from('cliente')
         .update({
-          codigo: form.codigo ?? null,
           nombre: form.nombre ?? null,
-           calle: form.calle ?? null,
-           localidad: form.localidad ?? null,
-           locacion_extra: form.locacion_extra ?? null,
-           direccion_extra: form.direccion_extra ?? null,
-           telefono: form.telefono ?? null,
-          celular: form.celular ?? null,
+          calle: form.calle ?? null,
+          localidad: form.localidad ?? null,
+          locacion_extra: form.locacion_extra ?? null,
+          direccion_extra: form.direccion_extra ?? null,
+          telefono: form.telefono ?? null,
           email: form.email ?? null,
           clinica: form.clinica ?? null,
           tiene_acceso: form.tiene_acceso ?? false,
+          registro_medico: form.registro_medico ?? null,
         })
         .eq('id', cliente.id)
       if (error) throw error
@@ -293,7 +288,7 @@ export function ClientePerfilPageClient({ empleado = false }: { empleado?: boole
        <ClienteHeader
         backOnClick={() => router.back()}
         title={cliente.nombre || 'Cliente'}
-        subtitle={`#${cliente.id} · Código ${cliente.codigo ?? '—'}`}
+        subtitle={`#${cliente.id}`}
         badge={cliente.tiene_acceso ? 'Activo' : 'Sin acceso'}
         isEditing={isEditing}
         onToggleEdit={() => setIsEditing((prev) => !prev)}
@@ -315,14 +310,6 @@ export function ClientePerfilPageClient({ empleado = false }: { empleado?: boole
         <CardContent className="grid gap-4 sm:grid-cols-2">
           {isEditing ? (
             <>
-              <div className="grid gap-1.5">
-                <label className="text-sm font-medium text-primary">Código</label>
-                <Input
-                  value={form.codigo ?? ''}
-                  onChange={(e) => setField('codigo', e.target.value)}
-                  placeholder="Código"
-                />
-              </div>
               <div className="grid gap-1.5">
                 <label className="text-sm font-medium text-primary">Nombre</label>
                 <Input
@@ -349,11 +336,11 @@ export function ClientePerfilPageClient({ empleado = false }: { empleado?: boole
                 />
               </div>
               <div className="grid gap-1.5">
-                <label className="text-sm font-medium text-primary">Celular</label>
+                <label className="text-sm font-medium text-primary">Registro Médico</label>
                 <Input
-                  value={form.celular ?? ''}
-                  onChange={(e) => setField('celular', e.target.value)}
-                  placeholder="+57 300 123 4567"
+                  value={form.registro_medico ?? ''}
+                  onChange={(e) => setField('registro_medico', e.target.value)}
+                  placeholder="Registro médico"
                 />
               </div>
               <div className="grid gap-1.5">
@@ -411,12 +398,10 @@ export function ClientePerfilPageClient({ empleado = false }: { empleado?: boole
           ) : (
             <>
               <InfoRow label="Nombre" value={cliente.nombre} />
-              <InfoRow label="Código" value={cliente.codigo} />
               <InfoRow label="Email" value={cliente.email} />
               <InfoRow label="Teléfono" value={cliente.telefono} />
-              <InfoRow label="Celular" value={cliente.celular} />
               <InfoRow label="Clínica" value={cliente.clinica} />
-              <InfoRow label="Especialidad" value={especialidad} />
+              <InfoRow label="Registro Médico" value={cliente.registro_medico} />
               <InfoRow label="Calle / Dirección" value={cliente.calle} />
               <InfoRow label="Localidad" value={cliente.localidad} />
               <InfoRow label="Locación Extra" value={cliente.locacion_extra} />
@@ -436,8 +421,6 @@ export function ClientePerfilPageClient({ empleado = false }: { empleado?: boole
                 }
               />
                {!empleado && <InfoRow label="Laboratorio ID" value={cliente.laboratorio_id} />}
-               <InfoRow label="Creado" value={formatDate(cliente.created_at)} />
-               <InfoRow label="Actualizado" value={formatDate(cliente.updated_at)} />
             </>
           )}
         </CardContent>

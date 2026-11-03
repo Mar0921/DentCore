@@ -199,11 +199,11 @@ const [tecnico, setTecnico] = useState('')
 
   useEffect(() => {
     let cancelled = false
-    if (!lab?.id) return
+    if (!solicitud?.laboratorio_id) return
     supabase
       .from('empleados')
       .select('id, nombre')
-      .eq('laboratorio_id', lab.id)
+      .eq('laboratorio_id', solicitud.laboratorio_id)
       .order('nombre')
       .then(({ data }) => {
         if (!cancelled && data) setEmpleados(data as { id: string; nombre: string }[])
@@ -211,7 +211,7 @@ const [tecnico, setTecnico] = useState('')
     return () => {
       cancelled = true
     }
-  }, [lab?.id])
+  }, [solicitud?.laboratorio_id])
 
   // Fases agrupadas por producto de la solicitud (productos -> producto_fases -> fases)
   useEffect(() => {

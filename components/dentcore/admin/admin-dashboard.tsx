@@ -25,13 +25,22 @@ export function AdminDashboard() {
 
   async function loadData() {
     try {
-      const { data: labs } = await supabase.from('laboratorio').select('*').limit(1)
-      if (labs && labs.length > 0) {
-        console.log('Laboratorio cargado:', labs[0])
-        setLab(labs[0])
-        const { data: emps } = await supabase.from('empleados').select('*').eq('laboratorio_id', labs[0].id)
-        if (emps) setEmpleados(emps)
-        const { data: sols } = await supabase.from('solicitudes').select('*').eq('laboratorio_id', labs[0].id)
+      const { data: emps } = await supabase
+        .from('empleados')
+        .select('laboratorio_id')
+        .not('laboratorio_id', 'is', null)
+        .order('laboratorio_id', { ascending: true })
+      const labIds = (emps?.map((e: any) => e.laboratorio_id) || []).filter(Boolean)
+      const labId = labIds.length > 0 ? labIds[0] : null
+
+      if (labId) {
+        const { data: labs } = await supabase.from('laboratorio').select('*').eq('id', labId).limit(1)
+        if (labs && labs.length > 0) {
+          setLab(labs[0])
+        }
+        const { data: empsAll } = await supabase.from('empleados').select('*').eq('laboratorio_id', labId)
+        if (empsAll) setEmpleados(empsAll)
+        const { data: sols } = await supabase.from('solicitudes').select('*').eq('laboratorio_id', labId)
         if (sols) setSolicitudes(sols)
       }
     } catch (err) {

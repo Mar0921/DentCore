@@ -18,6 +18,7 @@ export function InvitadoLaboratorioPageClient() {
     clinica: "",
     locacion_extra: "",
     direccion_extra: "",
+    registro_medico: "",
   })
   const [solicitudes, setSolicitudes] = useState<any[]>([])
   const [selectedSolicitud, setSelectedSolicitud] = useState<any>(null)
@@ -43,6 +44,7 @@ export function InvitadoLaboratorioPageClient() {
           clinica: data.clinica || "",
           locacion_extra: data.locacion_extra || "",
           direccion_extra: data.direccion_extra || "",
+          registro_medico: data.registro_medico || "",
         })
       }
     } catch (err) {
@@ -173,6 +175,14 @@ export function InvitadoLaboratorioPageClient() {
                       onChange={(e) => setFormData({ ...formData, direccion_extra: e.target.value })}
                     />
                   </div>
+                  <div>
+                    <label className="text-sm font-medium">Registro Médico</label>
+                    <Input
+                      value={formData.registro_medico ?? ""}
+                      onChange={(e) => setFormData({ ...formData, registro_medico: e.target.value })}
+                      placeholder="Antecedentes médicos / alergias"
+                    />
+                  </div>
                   <div className="flex gap-2">
                     <Button onClick={handleSave} className="gap-2">
                       <Save className="size-4" />
@@ -213,6 +223,9 @@ export function InvitadoLaboratorioPageClient() {
                     </div>
                     <div className="flex items-center gap-2">
                       <span className="text-sm">Direccion Extra: {invitado?.direccion_extra || "—"}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm">Registro Médico: {invitado?.registro_medico || "—"}</span>
                     </div>
                   </div>
                   <Button variant="outline" className="w-full gap-2" onClick={() => setEditing(true)}>

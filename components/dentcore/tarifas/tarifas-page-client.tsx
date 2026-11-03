@@ -20,7 +20,7 @@ interface Producto {
 
 function formatPrice(value: number | string | null | undefined) {
   const num = Number(value) || 0
-  return 'Bs. ' + num.toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  return '$ ' + num.toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
 export function TarifasPageClient() {

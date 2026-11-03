@@ -53,6 +53,59 @@ interface SolicitudCompleta {
   laboratorio_id?: string | null
 }
 
+/**
+ * Abre una ventana de impresión con SOLO el contenido del elemento indicado,
+ * copiando los estilos de la página (Tailwind, variables CSS, etc.).
+ * Desde el diálogo de impresión se elige "Guardar como PDF".
+ * (Mismo formato de exportación que la preescripción.)
+ */
+function imprimirElemento(el: HTMLElement | null, titulo: string) {
+  if (!el) return
+  const win = window.open('', '_blank', 'width=900,height=1000')
+  if (!win) {
+    alert('El navegador bloqueó la ventana emergente. Permita las ventanas emergentes para descargar el PDF.')
+    return
+  }
+
+  const estilos = Array.from(document.querySelectorAll('link[rel="stylesheet"], style'))
+    .map((n) => n.outerHTML)
+    .join('\n')
+
+  win.document.open()
+  win.document.write(`<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <title>${titulo}</title>
+    ${estilos}
+    <style>
+      @page { size: A4; margin: 12mm; }
+      html, body { background: #fff !important; color: #111 !important; }
+      body { margin: 0; padding: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      .print-root { width: 100%; max-width: 190mm; margin: 0 auto; }
+      .print-root #documento { width: 100% !important; max-width: 100% !important; box-shadow: none !important; margin: 0 !important; }
+      .no-break { break-inside: avoid; page-break-inside: avoid; }
+      tr, table { break-inside: avoid; page-break-inside: avoid; }
+    </style>
+  </head>
+  <body>
+    <div class="print-root">${el.outerHTML}</div>
+  </body>
+</html>`)
+  win.document.close()
+
+  const lanzar = () => {
+    win.focus()
+    win.print()
+  }
+  // Esperar a que carguen estilos e imágenes
+  if (win.document.readyState === 'complete') {
+    setTimeout(lanzar, 600)
+  } else {
+    win.onload = () => setTimeout(lanzar, 600)
+  }
+}
+
 export default function FichasTecnicasPage() {
   return (
     <Suspense fallback={<div className="p-6">Cargando...</div>}>
@@ -2103,7 +2156,7 @@ function FichasTecnicasPageInner() {
         campos: [
           {
             label: "Análisis de riesgos",
-            value: "Riesgo bajo. Posible fractura por oclusión excesiva; mitigado con ajuste oclusal yナイト guard si bruxismo.",
+            value: "Riesgo bajo. Posible fractura por oclusión excesiva; mitigado con ajuste oclusal y night guard si bruxismo.",
           },
           {
             label: "Advertencias y contraindicaciones",
@@ -2162,7 +2215,7 @@ function FichasTecnicasPageInner() {
             if (prev.find((s) => s.id === ultimaSolicitud!.id)) return prev
             return [...prev, ultimaSolicitud!]
           })
-          setSolicitudActual(ultimaSolicitud)
+          setSolicitudActual(ultimaSolicitud ?? null)
           setSolicitudActualId(solicitud.id)
         }
       }
@@ -2311,8 +2364,9 @@ function FichasTecnicasPageInner() {
     setTipoFichaActual(ficha.tipo)
     setEditingFicha(true)
     setShowFichaModal(true)
-    await new Promise((r) => setTimeout(r, 100))
-    await handleDownloadPdf()
+    // Dar tiempo a que el modal renderice la ficha antes de exportar
+    await new Promise((r) => setTimeout(r, 400))
+    await handleDownloadPdf(ficha.tipo)
     setShowFichaModal(false)
   }
 
@@ -2328,122 +2382,34 @@ function FichasTecnicasPageInner() {
       check()
     })
 
-  const handleDownloadPdf = async () => {
+  /**
+   * Exporta la ficha técnica con el mismo formato que la preescripción:
+   * abre la ventana de impresión (A4) para "Guardar como PDF".
+   */
+  const handleDownloadPdf = async (tipoOverride?: string) => {
     setDownloadingFicha(true)
+    // Pasar a modo lectura para que los campos se impriman como texto
     setEditingFicha(false)
     try {
-      const [{ default: jsPDF }, { default: html2canvas }] = await Promise.all([
-        import("jspdf"),
-        import("html2canvas"),
-      ])
-
-      const styleEl = document.createElement('style')
-      styleEl.textContent = '* { color: #000 !important; background-color: transparent !important; border-color: #000 !important; }'
-      document.head.appendChild(styleEl)
-      const nodeCheck = await waitForElement("documento", 10000)
-      const headerElCheck = document.getElementById("doc-header")
-      if (!nodeCheck || !headerElCheck) {
+      const node = await waitForElement("documento", 10000)
+      if (!node) {
         alert("No se encontró el documento para generar el PDF.")
-        setDownloadingFicha(false)
-        setEditingFicha(true)
-        styleEl.remove()
         return
       }
-      const node = nodeCheck
-      const headerEl = headerElCheck
+      // Esperar a que React re-renderice en modo lectura
+      await new Promise((r) => setTimeout(r, 250))
 
-      const scrollableAncestors: HTMLElement[] = []
-      let walker = (node as HTMLElement).parentElement
-      while (walker && walker !== document.body) {
-        scrollableAncestors.push(walker)
-        walker = walker.parentElement
-      }
-      const previousStyles = scrollableAncestors.map((a) => ({
-        el: a,
-        overflow: a.style.overflow,
-        overflowY: a.style.overflowY,
-        overflowX: a.style.overflowX,
-        maxHeight: a.style.maxHeight,
-        maxWidth: a.style.maxWidth,
-        scrollTop: a.scrollTop,
-      }))
-      scrollableAncestors.forEach((a) => {
-        a.style.overflow = "visible"
-        a.style.overflowY = "visible"
-        a.style.overflowX = "visible"
-        a.style.maxHeight = "none"
-        a.style.maxWidth = "none"
-        a.scrollTop = 0
-      })
+      const src = solicitudActual || solicitudes.find((s) => s.id === solicitudActualId) || solicitudes[0]
+      const codigo = src?.codigo_trazabilidad || String(solicitudActualId ?? "")
+      const tipo = (tipoOverride || tipoFichaActual || "Ficha-tecnica").replace(/\s+/g, "-")
+      const titulo = `Ficha-${tipo}${codigo ? `-${codigo}` : ""}`
 
-      const shot = (el: HTMLElement) =>
-        html2canvas(el, { scale: 2, backgroundColor: "#ffffff", useCORS: true, allowTaint: true, logging: false, removeContainer: true, foreignObjectRendering: false } as any)
-
-      styleEl.textContent = '* { color: #000 !important; background-color: #fff !important; border-color: #000 !important; fill: #000 !important; stroke: #000 !important; }'
-      await new Promise(r => setTimeout(r, 200))
-      styleEl.textContent = '* { color: #000 !important; background-color: #fff !important; border-color: #000 !important; fill: #000 !important; stroke: #000 !important; }'
-      document.head.appendChild(styleEl)
-      await new Promise(r => setTimeout(r, 200))
-
-      const headerCanvas = await shot(headerEl)
-      headerEl.style.display = "none"
-      const fullCanvas = await shot(node)
-
-      const pdf = new jsPDF({ unit: "pt", format: "a4" })
-      const pageWidth = pdf.internal.pageSize.getWidth()
-      const pageHeight = pdf.internal.pageSize.getHeight()
-      const marginX = 40
-      const marginTop = 28
-      const marginBottom = 28
-      const gap = 8
-      const contentWidth = pageWidth - marginX * 2
-
-      const ptHeight = (c: HTMLCanvasElement) => (c.height * contentWidth) / c.width
-      const headerHpt = Math.max(ptHeight(headerCanvas), 40)
-      const headerData = headerCanvas.toDataURL("image/png")
-      const contentHeightPt = ptHeight(fullCanvas)
-      const contentTop = marginTop + headerHpt + gap
-      const availableContentHeight = pageHeight - marginBottom - contentTop
-      const pxPerPt = fullCanvas.width / contentWidth
-      const totalPages = Math.max(1, Math.ceil((contentHeightPt + gap) / (availableContentHeight + gap)))
-
-      for (let i = 0; i < totalPages; i++) {
-        if (i > 0) pdf.addPage()
-        pdf.addImage(headerData, "PNG", marginX, marginTop, contentWidth, headerHpt)
-        const startY = i * availableContentHeight
-        const sliceH = Math.min(availableContentHeight, contentHeightPt - startY)
-        if (sliceH <= 0) continue
-        const tmp = document.createElement("canvas")
-        tmp.width = fullCanvas.width
-        tmp.height = Math.max(1, Math.round(sliceH * pxPerPt))
-        const ctx = tmp.getContext("2d")
-        if (!ctx) continue
-        ctx.fillStyle = "#ffffff"
-        ctx.fillRect(0, 0, tmp.width, tmp.height)
-        ctx.drawImage(fullCanvas, 0, Math.round(startY * pxPerPt), fullCanvas.width, tmp.height, 0, 0, fullCanvas.width, tmp.height)
-        pdf.addImage(tmp.toDataURL("image/png"), "PNG", marginX, contentTop, contentWidth, sliceH)
-      }
-
-      const fileName = tipoFichaActual
-        .toLowerCase()
-        .replace(/[^a-z0-9\s-]/g, "")
-        .replace(/\s+/g, "-")
-        .replace(/-+/g, "-")
-      pdf.save(`${fileName}.pdf`);
+      imprimirElemento(document.getElementById("documento"), titulo)
     } catch (err: any) {
-      alert("Error generando el PDF: " + err.message);
+      alert("Error generando el PDF: " + err.message)
     } finally {
-      const headerElFinally = document.getElementById("doc-header")
-      if (headerElFinally) headerElFinally.style.display = ""
       setDownloadingFicha(false)
       setEditingFicha(true)
-      // Remove temporary style
-      const styleEls = document.querySelectorAll('style')
-      styleEls.forEach((el) => {
-        if (el.textContent && el.textContent.includes('color: #000 !important')) {
-          el.remove()
-        }
-      })
     }
   }
 
@@ -2608,7 +2574,7 @@ function FichasTecnicasPageInner() {
                   onCampoChange: handleCampoChange,
                   editing: editingFicha,
                   onToggleEditing: () => setEditingFicha((e) => !e),
-                  onDownload: handleDownloadPdf,
+                  onDownload: () => handleDownloadPdf(),
                   downloading: downloadingFicha,
                   showToolbar: true,
                   nombreTipo: tipoFichaActual,

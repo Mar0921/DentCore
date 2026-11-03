@@ -14,15 +14,19 @@ import {
   generateCodigoTrazabilidad,
   formatFecha,
 } from '@/components/dentcore/solicitud/solicitud-types'
+import { useLabUser } from '@/hooks/use-lab-user'
 
 export function PrescriptionForm({ 
   redirectPath = '/laboratorio/solicitudes',
   odontologoPrecargado,
+  registroMedicoPrecargado,
 }: { 
   redirectPath?: string
   odontologoPrecargado?: { nombre: string; email?: string; telefono?: string }
+  registroMedicoPrecargado?: string
 }) {
   const router = useRouter()
+  const { laboratorioId } = useLabUser()
   const [solicitudes, setSolicitudes] = useState<SolicitudEntry[]>([createDefaultSolicitud()])
   const [activeIndex, setActiveIndex] = useState(0)
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -89,6 +93,18 @@ export function PrescriptionForm({
       // ignore storage errors
     }
   }, [])
+
+  useEffect(() => {
+    if (!registroMedicoPrecargado) return
+    setSolicitudes((prev) =>
+      prev.map((s) => {
+        if (!s.formData.registroMedico) {
+          return { ...s, formData: { ...s.formData, registroMedico: registroMedicoPrecargado } }
+        }
+        return s
+      }),
+    )
+  }, [registroMedicoPrecargado])
 
   useEffect(() => {
     setSolicitudes((prev) =>
@@ -172,21 +188,61 @@ export function PrescriptionForm({
     }
     setIsSubmitting(true)
     try {
-      const { data: labs } = await supabase.from('laboratorio').select('id').limit(1)
-      const laboratorio_id = labs && labs.length > 0 ? labs[0].id : null
+      // Resolve the current lab id reliably (the hook value may be null on first render)
+      let labId: string | null = laboratorioId
+      if (!labId && typeof window !== 'undefined') {
+        const saved = localStorage.getItem('labId')
+        if (saved) labId = saved
+      }
+      if (!labId) {
+        const email = (typeof window !== 'undefined' ? localStorage.getItem('labUserEmail') : '') || ''
+        if (email) {
+          const { data: odonto } = await supabase
+            .from('odontologos')
+            .select('laboratorio_id')
+            .eq('email', email)
+            .maybeSingle()
+          if (odonto?.laboratorio_id) labId = odonto.laboratorio_id
+          const { data: cliente } = await supabase
+            .from('cliente')
+            .select('laboratorio_id')
+            .eq('email', email)
+            .maybeSingle()
+          if (cliente?.laboratorio_id) labId = cliente.laboratorio_id
+          const { data: emp } = await supabase
+            .from('empleados')
+            .select('laboratorio_id')
+            .eq('email', email)
+            .maybeSingle()
+          if (emp?.laboratorio_id) labId = emp.laboratorio_id
+        }
+      }
+      if (!labId) {
+        const { data: labs } = await supabase.from('laboratorio').select('id').limit(1)
+        if (labs && labs.length > 0) labId = labs[0].id
+      }
+
       for (const s of solicitudes) {
         const { formData, servicioTipo } = s
         let odontologo_id = null
         if (formData.odontologo) {
-          const { data: odontoData, error: odontoError } = await supabase
+          // Look up the odontologo, preferring the one linked to the current lab
+          let query = supabase
             .from('odontologos')
-            .select('id')
+            .select('id, laboratorio_id')
             .or(`nombre.eq.${formData.odontologo},clinica.eq.${formData.odontologo},email.eq.${formData.odontologo}`)
-            .single()
-          if (!odontoError && odontoData?.id) {
-            odontologo_id = odontoData.id
+            .limit(10)
+          const { data: odontoData, error: odontoError } = await query
+          const odontoRows = Array.isArray(odontoData) ? odontoData : (odontoData ? [odontoData] : [])
+          if (!odontoError && odontoRows.length > 0) {
+            // Prefer a row linked to the current lab; fall back to any match
+            const match = odontoRows.find((r: any) => r.laboratorio_id === labId) || odontoRows[0]
+            if (match?.id) {
+              odontologo_id = match.id
+            }
           }
         }
+
         const productos_str = formData.productos.length > 0
           ? formData.productos.map(p => `${p.producto} x${p.unidades} (${p.dientes || 'sin dientes'}) a $${p.precioUnitario.toFixed(2)}`).join('; ')
           : ''
@@ -196,7 +252,7 @@ export function PrescriptionForm({
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            laboratorio_id,
+            laboratorio_id: labId,
             odontologo_id,
             odontologonombre: formData.odontologo || null,
             odontologo_email: formData.correo || null,

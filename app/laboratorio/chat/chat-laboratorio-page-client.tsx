@@ -21,8 +21,13 @@ export default function ChatLaboratorioPageClient() {
   useEffect(() => { if (conversacionActiva) { cargarMensajes(); const interval = setInterval(cargarMensajes, 3000); return () => clearInterval(interval) } }, [conversacionActiva])
 
   async function cargarLaboratorio() {
-    const { data: labs } = await supabase.from('laboratorio').select('id').limit(1)
-    if (labs && labs[0]) setLaboratorioId(labs[0].id)
+    const { data: clientes } = await supabase
+      .from('cliente')
+      .select('laboratorio_id')
+      .not('laboratorio_id', 'is', null)
+      .order('laboratorio_id', { ascending: true })
+    const labIds = (clientes?.map((c: any) => c.laboratorio_id) || []).filter(Boolean)
+    if (labIds.length > 0) setLaboratorioId(labIds[0])
   }
 
   async function cargarConversaciones() {

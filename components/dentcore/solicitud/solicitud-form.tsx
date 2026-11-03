@@ -169,21 +169,26 @@ export function SolicitudForm() {
     }
     setIsSubmitting(true)
     try {
-      const { data: labs } = await supabase.from('laboratorio').select('id').limit(1)
-      const laboratorio_id = labs && labs.length > 0 ? labs[0].id : null
-      for (const s of solicitudes) {
-        const { formData, servicioTipo } = s
-        let odontologo_id = null
-        if (formData.odontologo) {
-          const { data: odontoData, error: odontoError } = await supabase
-            .from('odontologos')
-            .select('id')
-            .or(`nombre.eq.${formData.odontologo},clinica.eq.${formData.odontologo},email.eq.${formData.odontologo}`)
-            .single()
-          if (!odontoError && odontoData?.id) {
-            odontologo_id = odontoData.id
-          }
-        }
+let laboratorio_id: string | null = null
+for (const s of solicitudes) {
+  const { formData, servicioTipo } = s
+  let odontologo_id = null
+  if (formData.odontologo) {
+    const { data: odontoData, error: odontoError } = await supabase
+      .from('odontologos')
+      .select('id, laboratorio_id')
+      .or(`nombre.eq.${formData.odontologo},clinica.eq.${formData.odontologo},email.eq.${formData.odontologo}`)
+      .limit(1)
+    const odontoRow = Array.isArray(odontoData) ? odontoData[0] : odontoData
+    if (!odontoError && odontoRow?.id) {
+      odontologo_id = odontoRow.id
+      if (!laboratorio_id && odontoRow.laboratorio_id) laboratorio_id = odontoRow.laboratorio_id
+    }
+  }
+  if (!laboratorio_id) {
+    // Do not fall back to an arbitrary laboratory; keep null if not linked.
+    laboratorio_id = null
+  }
         const productos_str = formData.productos.length > 0
           ? formData.productos.map(p => `${p.producto} x${p.unidades} (${p.dientes || 'sin dientes'}) a $${p.precioUnitario.toFixed(2)}`).join('; ')
           : ''

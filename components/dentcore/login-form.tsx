@@ -82,7 +82,6 @@ export function LoginForm() {
             return
           }
 
-          setSubmitting(false)
           setDone(true)
 
           localStorage.setItem('labUserType', 'invitado-laboratorio')
@@ -90,7 +89,13 @@ export function LoginForm() {
           localStorage.setItem('labUserName', cliente.nombre || correo.split('@')[0])
           if (laboratorio) {
             localStorage.setItem('labName', laboratorio.nombre)
+            localStorage.setItem('labId', laboratorio.id)
           }
+
+          try {
+            const { broadcastSessionStart } = await import('@/components/session-sync')
+            broadcastSessionStart()
+          } catch (_) {}
 
           router.push('/invitado-laboratorio')
           return
@@ -137,17 +142,22 @@ export function LoginForm() {
         }
 
         setSubmitting(false)
-        setDone(true)
+      setDone(true)
 
-        localStorage.setItem('labUserType', role === 'administrador' ? 'administrador' : 'empleado')
-        localStorage.setItem('labUserEmail', employee.email || correo)
-        localStorage.setItem('labUserName', employee.nombre?.trim() || correo.split('@')[0])
-        if (laboratorio) {
-          localStorage.setItem('labName', laboratorio.nombre)
-        }
+      localStorage.setItem('labUserType', role === 'administrador' ? 'administrador' : 'empleado')
+      localStorage.setItem('labUserEmail', employee.email || correo)
+      localStorage.setItem('labUserName', employee.nombre?.trim() || correo.split('@')[0])
+      if (laboratorio) {
+        localStorage.setItem('labName', laboratorio.nombre)
+      }
 
-        router.push(role === 'administrador' ? '/laboratorio' : '/empleado/trabajos')
-        return
+      try {
+        const { broadcastSessionStart } = await import('@/components/session-sync')
+        broadcastSessionStart()
+      } catch (_) {}
+
+      router.push(role === 'administrador' ? '/laboratorio' : '/empleado/trabajos')
+      return
       }
 
       const { data: empCheck } = await supabase

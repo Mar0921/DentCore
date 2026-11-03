@@ -13,16 +13,17 @@ export default function InvitadoNuevaSolicitudPage() {
   const router = useRouter()
   const { userEmail } = useLabUser()
   const [odontologoPrecargado, setOdontologoPrecargado] = useState<{ nombre: string; email?: string; telefono?: string } | undefined>(undefined)
+  const [registroMedicoPrecargado, setRegistroMedicoPrecargado] = useState<string | undefined>(undefined)
 
   useEffect(() => {
     if (!userEmail) return
 
-    async function loadOdontologo() {
+    async function loadData() {
       try {
         const { data: odonto } = await supabase
           .from('odontologos')
           .select('nombre, email, telefono')
-          .eq('email', userEmail)
+          .ilike('email', userEmail)
           .maybeSingle()
 
         if (odonto?.nombre) {
@@ -31,28 +32,30 @@ export default function InvitadoNuevaSolicitudPage() {
             email: odonto.email || userEmail,
             telefono: odonto.telefono || '',
           })
-          return
         }
 
         const { data: cliente } = await supabase
           .from('cliente')
-          .select('nombre, email, telefono')
-          .eq('email', userEmail)
+          .select('nombre, email, telefono, registro_medico')
+          .ilike('email', userEmail)
           .maybeSingle()
 
-        if (cliente?.nombre) {
+        if (cliente?.nombre && !odontologoPrecargado?.nombre) {
           setOdontologoPrecargado({
             nombre: cliente.nombre,
             email: cliente.email || userEmail,
             telefono: cliente.telefono || '',
           })
         }
-      } catch {
-        // ignore
+        if (cliente?.registro_medico) {
+          setRegistroMedicoPrecargado(cliente.registro_medico)
+        }
+      } catch (err) {
+        console.error("Error cargando registro médico:", err)
       }
     }
 
-    loadOdontologo()
+    loadData()
   }, [userEmail])
 
   return (
@@ -70,6 +73,7 @@ export default function InvitadoNuevaSolicitudPage() {
         <PrescriptionForm 
           redirectPath="/invitado-laboratorio/solicitudes" 
           odontologoPrecargado={odontologoPrecargado}
+          registroMedicoPrecargado={registroMedicoPrecargado}
         />
       </div>
     </AppShell>

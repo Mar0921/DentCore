@@ -5,6 +5,7 @@ export function useLabUser() {
   const [userName, setUserName] = useState<string>("")
   const [userEmail, setUserEmail] = useState<string>("")
   const [labName, setLabName] = useState<string>("")
+  const [laboratorioId, setLaboratorioId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -17,12 +18,16 @@ export function useLabUser() {
       const savedEmail = localStorage.getItem('labUserEmail')
       const savedName = localStorage.getItem('labUserName')
       const savedLabName = localStorage.getItem('labName')
+      const savedLabId = localStorage.getItem('labId')
 
       if (savedEmail) {
         setUserEmail(savedEmail)
         setUserName(savedName || "")
         if (savedLabName) {
           setLabName(savedLabName)
+        }
+        if (savedLabId) {
+          setLaboratorioId(savedLabId)
         }
         setLoading(false)
         return
@@ -36,6 +41,7 @@ export function useLabUser() {
 
       if (labs && labs.length > 0) {
         setLabName(labs[0].nombre)
+        setLaboratorioId(labs[0].id)
 
         const { data: employees } = await supabase
           .from("empleados")
@@ -55,5 +61,5 @@ export function useLabUser() {
     }
   }
 
-  return { userName, userEmail, labName, loading }
+  return { userName, userEmail, labName, laboratorioId, loading }
 }

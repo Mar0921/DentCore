@@ -43,6 +43,12 @@ interface GuardarFasePayload {
   evidenciaFile: File | null
 }
 
+interface ProductoInfo {
+  nombre: string
+  cantidad: string
+  dientes: string
+}
+
 interface FasesFabricacionProps {
   solicitudId?: string | null
   productoId?: string | null
@@ -50,6 +56,7 @@ interface FasesFabricacionProps {
   laboratorioId?: string | null
   dientes?: string | null
   cantidad?: number | null
+  productos?: string | null
   modo?: 'empleado' | 'laboratorio'
   onSave?: (fase: GuardarFasePayload) => void | Promise<void>
   className?: string
@@ -58,6 +65,33 @@ interface FasesFabricacionProps {
 const SELECT_CLASS =
   "w-full rounded-md border border-border bg-card px-2 py-1.5 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/30"
 
+function normalize(value?: string | null) {
+  return (value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase()
+}
+
+function parseProductos(productos?: string | null): Record<string, { cantidad: string; dientes: string }> {
+  const map: Record<string, { cantidad: string; dientes: string }> = {}
+  for (const raw of (productos || '').split(';').map((p) => p.trim()).filter(Boolean)) {
+    const m = raw.match(/^(.*?)\s+x(\d+)\s*\(([^)]*)\)/i)
+    const nombre = (m ? m[1] : raw).trim()
+    const cantidad = m ? m[2] : '—'
+    const dientes = m ? m[3].trim() : '—'
+    const key = normalize(nombre)
+    if (map[key]) {
+      const suma = Number(map[key].cantidad) + Number(cantidad)
+      map[key].cantidad = Number.isNaN(suma) ? map[key].cantidad : String(suma)
+      if (dientes !== '—') map[key].dientes = map[key].dientes === '—' ? dientes : `${map[key].dientes}, ${dientes}`
+    } else {
+      map[key] = { cantidad, dientes }
+    }
+  }
+  return map
+}
+
 export function FasesFabricacion({
   solicitudId,
   productoId,
@@ -65,6 +99,7 @@ export function FasesFabricacion({
   laboratorioId,
   dientes,
   cantidad,
+  productos,
   modo = 'laboratorio',
   onSave,
   className,
@@ -104,27 +139,33 @@ export function FasesFabricacion({
     async function load() {
       setLoading(true)
       try {
-        const [pfRes, sfRes, evRes] = await Promise.all([
-          productoIds != null
-            ? productoIds.length
-              ? supabase
-                  .from('producto_fases')
-                  .select('id, producto_id, fase_id, orden')
-                  .in('producto_id', productoIds)
-                  .order('orden', { ascending: true })
-              : Promise.resolve({ data: [], error: null })
-            : productoId
+        let resolvedProductoIds = productoIds
+        if ((!resolvedProductoIds || resolvedProductoIds.length === 0) && laboratorioId && productos) {
+          const { data: prods } = await supabase.from('productos').select('id, titulo, nombre').eq('laboratorio_id', laboratorioId)
+          const solNorm = String(productos).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+          resolvedProductoIds = (prods || [])
+            .filter((p: any) => {
+              const t = (p.titulo || p.nombre || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+              return t && solNorm.includes(t)
+            })
+            .map((p: any) => p.id)
+        }
+        const idsToUse = resolvedProductoIds && resolvedProductoIds.length ? resolvedProductoIds : (productoId ? [productoId] : null)
+        const pfPromise =
+          idsToUse && idsToUse.length
             ? supabase
                 .from('producto_fases')
                 .select('id, producto_id, fase_id, orden')
-                .eq('producto_id', productoId)
+                .in('producto_id', idsToUse)
                 .order('orden', { ascending: true })
             : laboratorioId
               ? supabase
                   .from('producto_fases')
                   .select('id, producto_id, fase_id, orden')
                   .order('orden', { ascending: true })
-              : supabase.from('producto_fases').select('id, producto_id, fase_id, orden').order('orden', { ascending: true }),
+              : supabase.from('producto_fases').select('id, producto_id, fase_id, orden').order('orden', { ascending: true })
+        const [pfRes, sfRes, evRes] = await Promise.all([
+          pfPromise,
           solicitudId
             ? supabase
                 .from('solicitud_fases')
@@ -247,7 +288,7 @@ export function FasesFabricacion({
     return () => {
       cancelled = true
     }
-  }, [productoId, laboratorioId, solicitudId])
+  }, [productoId, laboratorioId, solicitudId, productos])
 
   const handleChangeEstado = useCallback(
     (id: string, value: string) => {
@@ -330,9 +371,7 @@ export function FasesFabricacion({
     )
   }
 
-  const dientesList = dientes
-    ? String(dientes).split(/[\s,]+/).filter(Boolean).join(', ')
-    : '—'
+const productoInfo = parseProductos(productos)
 
   const isCompletado = (estado: string) =>
     estado === 'completado' || estado === 'completada'
@@ -342,10 +381,6 @@ export function FasesFabricacion({
     <Card className={className}>
       <CardHeader>
         <CardTitle className="text-lg font-bold">FASES DE FABRICACIÓN</CardTitle>
-        <p className="text-xs text-muted-foreground mt-0.5">
-          Dientes: <span className="font-mono">{dientesList}</span>{' '}
-          Cant: <span className="font-mono">{cantidad ?? '—'}</span>
-        </p>
       </CardHeader>
       <CardContent className="p-0">
         <div className="overflow-x-auto">
@@ -376,7 +411,10 @@ export function FasesFabricacion({
             {Object.entries(
               fases.reduce((acc: any, fase: any) => {
                 const key = fase.productoId || 'default'
-                if (!acc[key]) acc[key] = { nombre: fase.productoNombre || 'Producto', items: [] }
+                if (!acc[key]) {
+                  const info = productoInfo[normalize(fase.productoNombre)] || { cantidad: '—', dientes: '—' }
+                  acc[key] = { nombre: fase.productoNombre || 'Producto', cantidad: info.cantidad, dientes: info.dientes, items: [] }
+                }
                 acc[key].items.push(fase)
                 return acc
               }, {}),
@@ -385,6 +423,8 @@ export function FasesFabricacion({
                 <tr className="bg-secondary/40">
                   <td colSpan={6} className="px-4 py-2 font-semibold text-foreground">
                     {group.nombre}
+                    <span className="ml-3 text-muted-foreground font-normal">Dientes: {group.dientes}</span>
+                    <span className="ml-3 text-muted-foreground font-normal">Cant: {group.cantidad}</span>
                   </td>
                 </tr>
                 {group.items.map((fase: any) => (

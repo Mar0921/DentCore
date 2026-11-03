@@ -582,11 +582,7 @@ export function SolicitudSection({
                   value={formData.direccion || '__select__'}
                   onChange={(e) => {
                     const value = e.target.value
-                    if (value === '__custom__') {
-                      onFormDataChange({ direccion: '' })
-                    } else {
-                      onFormDataChange({ direccion: value })
-                    }
+                    onFormDataChange({ direccion: value })
                   }}
                   className="h-10 w-full rounded-lg border border-border bg-card px-3.5 text-sm text-foreground outline-none transition-colors focus:border-accent focus:ring-2 focus:ring-accent/30"
                 >
@@ -608,16 +604,7 @@ export function SolicitudSection({
                         </option>
                       ))
                   })()}
-                  <option value="__custom__">Otra dirección (especificar)</option>
                 </select>
-                {formData.direccion === '' && (
-                  <Input
-                    className="mt-2"
-                    value={formData.direccion}
-                    onChange={(e) => onFormDataChange({ direccion: e.target.value })}
-                    placeholder="Especificar dirección"
-                  />
-                )}
               </>
             ) : (
               <Input

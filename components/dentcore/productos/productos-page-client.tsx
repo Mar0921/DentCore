@@ -221,8 +221,8 @@ export function ProductosPageClient() {
   )
 
   function formatPrice(price: number) {
-    if (!price) return "Bs. 0"
-    return "Bs. " + price.toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    if (!price) return "$ 0"
+    return "$ " + price.toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
   }
 
   return (

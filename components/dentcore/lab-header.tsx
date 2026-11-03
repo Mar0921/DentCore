@@ -34,6 +34,7 @@ export function LabHeader() {
       localStorage.removeItem('labUserEmail')
       localStorage.removeItem('labUserName')
       localStorage.removeItem('labName')
+      localStorage.removeItem('labId')
     }
     router.push('/iniciar-sesion')
     router.refresh()

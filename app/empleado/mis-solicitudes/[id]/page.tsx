@@ -1,6 +1,6 @@
 'use client'
 
-import { Fragment, useState, useEffect, useMemo } from 'react'
+import { Fragment, useState, useEffect, useMemo, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { Button } from '@/components/ui/button'
@@ -20,6 +20,56 @@ function isViewableDocument(nombreArchivo?: string | null, tipoMime?: string | n
   if (!nombreArchivo && !tipoMime) return false
   const source = `${nombreArchivo || ''} ${tipoMime || ''}`.toLowerCase()
   return /\.(pdf|jpg|jpeg|png|gif|webp|svg)$/.test(source) || source.includes('pdf') || source.includes('image/')
+}
+
+/**
+ * Abre una ventana de impresión con SOLO el contenido del elemento indicado,
+ * copiando los estilos de la página (Tailwind, variables CSS, etc.).
+ * Desde el diálogo de impresión se elige "Guardar como PDF".
+ */
+function imprimirElemento(el: HTMLElement | null, titulo: string) {
+  if (!el) return
+  const win = window.open('', '_blank', 'width=900,height=1000')
+  if (!win) {
+    alert('El navegador bloqueó la ventana emergente. Permita las ventanas emergentes para descargar el PDF.')
+    return
+  }
+
+  const estilos = Array.from(document.querySelectorAll('link[rel="stylesheet"], style'))
+    .map((n) => n.outerHTML)
+    .join('\n')
+
+  win.document.open()
+  win.document.write(`<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <title>${titulo}</title>
+    ${estilos}
+    <style>
+      @page { size: A4; margin: 12mm; }
+      html, body { background: #fff !important; color: #111 !important; }
+      body { margin: 0; padding: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      .print-root { width: 100%; max-width: 190mm; margin: 0 auto; }
+      .no-break { break-inside: avoid; page-break-inside: avoid; }
+    </style>
+  </head>
+  <body>
+    <div class="print-root">${el.innerHTML}</div>
+  </body>
+</html>`)
+  win.document.close()
+
+  const lanzar = () => {
+    win.focus()
+    win.print()
+  }
+  // Esperar a que carguen estilos e imágenes
+  if (win.document.readyState === 'complete') {
+    setTimeout(lanzar, 600)
+  } else {
+    win.onload = () => setTimeout(lanzar, 600)
+  }
 }
 
 interface FaseLite {
@@ -48,6 +98,15 @@ interface FichaRegistro {
   archivo_url?: string | null
   tipo_mime?: string | null
   created_at?: string | null
+}
+
+interface LaboratorioInfo {
+  nombre: string
+  nit: string
+  direccion: string
+  ciudad: string
+  telefono: string
+  correo: string
 }
 
 interface SolicitudLite {
@@ -118,6 +177,11 @@ function tieneSecciones(ficha: FichaRegistro) {
   return Array.isArray(ficha.secciones) && ficha.secciones.length > 0
 }
 
+function nombreArchivoAdjunto(archivo: string) {
+  const parts = archivo.split('|')
+  return parts[0]?.trim() || archivo
+}
+
 export default function EmpleadoSolicitudDetallePage() {
   const router = useRouter()
   const params = useParams<{ id: string }>()
@@ -150,6 +214,10 @@ export default function EmpleadoSolicitudDetallePage() {
   const [incidencias, setIncidencias] = useState<any[]>([])
   const [medidasPorInc, setMedidasPorInc] = useState<Record<string, any[]>>({})
   const [fichaVista, setFichaVista] = useState<FichaRegistro | null>(null)
+  const [laboratorio, setLaboratorio] = useState<LaboratorioInfo | null>(null)
+
+  // Ref para exportar la preescripción a PDF
+  const preescripcionRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (!id) return
@@ -228,6 +296,38 @@ export default function EmpleadoSolicitudDetallePage() {
     loadFases()
   }, [solicitud])
 
+  // Datos del laboratorio (para el encabezado de la preescripción)
+  // SUPOSICIÓN: tabla "laboratorios" con columnas nombre, nit, direccion, ciudad, telefono, correo/email.
+  // NOTA: el empleado debe tener permiso (RLS) de lectura sobre "laboratorios".
+  useEffect(() => {
+    if (!solicitud?.laboratorio_id) return
+    const laboratorioId = solicitud.laboratorio_id
+
+    async function loadLaboratorio() {
+      try {
+        const { data, error } = await supabase
+          .from('laboratorios')
+          .select('*')
+          .eq('id', laboratorioId)
+          .maybeSingle()
+
+        if (error || !data) return
+        const d = data as Record<string, any>
+        setLaboratorio({
+          nombre: d.nombre ?? d.razon_social ?? d.name ?? '',
+          nit: d.nit ?? d.documento ?? '',
+          direccion: d.direccion ?? d.address ?? '',
+          ciudad: d.ciudad ?? d.city ?? '',
+          telefono: d.telefono ?? d.celular ?? d.phone ?? '',
+          correo: d.correo ?? d.email ?? d.correo_electronico ?? '',
+        })
+      } catch {
+        // ignore
+      }
+    }
+    loadLaboratorio()
+  }, [solicitud?.laboratorio_id])
+
   useEffect(() => {
     if (!solicitud?.laboratorio_id || !solicitud.tipo || !solicitud.productos) {
       setProductoIds([])
@@ -244,9 +344,13 @@ export default function EmpleadoSolicitudDetallePage() {
           setProductoIds([])
           return
         }
-        const solProd = String(solicitud.productos).toLowerCase()
+        const solProd = String(solicitud!.productos).toLowerCase()
+        const normSol = solProd.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
         const ids = data
-          .filter((p: any) => solProd.includes((p.titulo || p.nombre || '').toLowerCase()))
+          .filter((p: any) => {
+            const t = (p.titulo || p.nombre || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+            return t && (normSol.includes(t) || t.includes(normSol))
+          })
           .map((p: any) => p.id)
         setProductoIds(ids)
       } catch {
@@ -611,20 +715,31 @@ export default function EmpleadoSolicitudDetallePage() {
     codigoPartes.length >= 2 ? `${codigoPartes[0]}-${codigoPartes[1]}` : codigoRaw
   const dientesFicha = selectedTeeth.map(String)
 
+  // Exportación de la preescripción
+  const codigoArchivo = solicitud.codigo_trazabilidad || solicitud.id
+  const handleExportPreescripcion = () =>
+    imprimirElemento(preescripcionRef.current, `Preescripcion-${codigoArchivo}`)
+
+  const faseTexto = faseSeleccionada
+    ? `${faseSeleccionada.orden}. ${faseSeleccionada.nombre}`
+    : (selectedFaseId || solicitud.fase_id || '—')
+
   return (
     <AppShell sidebar="empleado">
       <div className="space-y-4">
-        <div className="flex items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <Button variant="ghost" size="icon" className="size-8" onClick={() => router.back()}>
               <ChevronLeft className="size-4" />
             </Button>
             <div>
               <h1 className="font-heading text-2xl font-bold text-primary">Detalle de solicitud</h1>
-              <p className="text-sm text-muted-foreground font-mono">#{solicitud.id}</p>
+              <p className="text-sm text-muted-foreground font-mono">
+                {solicitud.codigo_trazabilidad ? `Código: ${solicitud.codigo_trazabilidad}` : `#${solicitud.id}`}
+              </p>
             </div>
           </div>
-          <div className="flex items-center gap-2 text-xs">
+          <div className="flex flex-wrap items-center gap-2 text-xs">
             {estadoOpt && (
               <span className="inline-flex rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-800">
                 {estadoOpt.label}
@@ -635,6 +750,15 @@ export default function EmpleadoSolicitudDetallePage() {
                 {prioridadOpt.label}
               </span>
             )}
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-2"
+              onClick={handleExportPreescripcion}
+            >
+              <FileText className="size-4" />
+              Exportar preescripción
+            </Button>
             {isEditingFase ? (
               <>
                 <Button
@@ -711,10 +835,7 @@ export default function EmpleadoSolicitudDetallePage() {
                 </select>
               </div>
             ) : (
-              <InfoRow
-                label="Fase actual"
-                value={faseSeleccionada ? `${faseSeleccionada.orden}. ${faseSeleccionada.nombre}` : selectedFaseId || solicitud.fase_id || '—'}
-              />
+              <InfoRow label="Fase actual" value={faseTexto} />
             )}
             <InfoRow label="Progreso" value={`${progresoDerivado}%`} />
             <InfoRow label="Asignado a" value={solicitud.asignado_a || '—'} />
@@ -980,14 +1101,15 @@ export default function EmpleadoSolicitudDetallePage() {
             <CardTitle className="text-base">Fases de fabricación</CardTitle>
           </CardHeader>
           <CardContent>
-<FasesFabricacion
-               solicitudId={solicitud.id}
-               productoIds={productoIds}
-               laboratorioId={solicitud.laboratorio_id || undefined}
-               dientes={solicitud.dientes || undefined}
-               cantidad={1}
-               modo="empleado"
-               onSave={async (fase) => {
+            <FasesFabricacion
+              solicitudId={solicitud.id}
+              productoIds={productoIds}
+              laboratorioId={solicitud.laboratorio_id || undefined}
+              dientes={solicitud.dientes || undefined}
+              cantidad={1}
+              productos={solicitud.productos || undefined}
+              modo="empleado"
+              onSave={async (fase) => {
                 if (!fase.faseId || !solicitud.id || !solicitud.laboratorio_id) return
                 try {
                   let archivoUrl: string | null = null
@@ -1130,7 +1252,6 @@ export default function EmpleadoSolicitudDetallePage() {
                   {incidencias.map((inc: any) => (
                     <Fragment key={inc.id}>
                       <tr
-                        key={inc.id}
                         className="border-b border-border/50 cursor-pointer hover:bg-secondary/30"
                         onClick={async () => {
                           if (medidasPorInc[inc.id]) {
@@ -1154,7 +1275,7 @@ export default function EmpleadoSolicitudDetallePage() {
                         <td className="py-2 pr-2 text-muted-foreground whitespace-nowrap">{inc.fecha} {inc.hora}</td>
                       </tr>
                       {medidasPorInc[inc.id] && (
-                        <tr key={inc.id + '-m'}>
+                        <tr>
                           <td colSpan={4} className="pb-2">
                             <div className="overflow-x-auto ml-4">
                               {medidasPorInc[inc.id].length === 0 ? (
@@ -1192,9 +1313,9 @@ export default function EmpleadoSolicitudDetallePage() {
         </Card>
 
         <Card>
-           <CardContent className="space-y-4">
-             <div className="flex flex-col gap-2 sm:flex-row">
-               <textarea
+          <CardContent className="space-y-4">
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <textarea
                 value={nuevaObservacion}
                 onChange={(e) => setNuevaObservacion(e.target.value)}
                 placeholder="Escribir observación..."
@@ -1332,6 +1453,116 @@ export default function EmpleadoSolicitudDetallePage() {
             </div>
           </CardContent>
         </Card>
+
+        {/* ============================================================
+            PREESCRIPCIÓN (oculta en pantalla; solo se usa para exportar)
+            Contiene únicamente: código de trazabilidad, datos del laboratorio
+            y los datos del detalle de la solicitud con el dentalgrama.
+           ============================================================ */}
+        <div
+          aria-hidden="true"
+          style={{ position: 'fixed', left: '-10000px', top: 0, width: '800px', pointerEvents: 'none' }}
+        >
+          <div ref={preescripcionRef}>
+            <div style={{ background: '#fff', color: '#111', fontFamily: 'Arial, Helvetica, sans-serif', fontSize: 12, padding: 8 }}>
+              {/* Encabezado: laboratorio + código de trazabilidad */}
+              <div
+                className="no-break"
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'flex-start',
+                  gap: 16,
+                  borderBottom: '2px solid #111',
+                  paddingBottom: 10,
+                  marginBottom: 14,
+                }}
+              >
+                <div>
+                  <div style={{ fontSize: 18, fontWeight: 700 }}>{laboratorio?.nombre || 'Laboratorio'}</div>
+                  {laboratorio?.nit ? <div>NIT: {laboratorio.nit}</div> : null}
+                  {laboratorio?.direccion || laboratorio?.ciudad ? (
+                    <div>{[laboratorio?.direccion, laboratorio?.ciudad].filter(Boolean).join(' - ')}</div>
+                  ) : null}
+                  {laboratorio?.telefono ? <div>Tel: {laboratorio.telefono}</div> : null}
+                  {laboratorio?.correo ? <div>{laboratorio.correo}</div> : null}
+                </div>
+                <div style={{ textAlign: 'right' }}>
+                  <div style={{ fontSize: 16, fontWeight: 700 }}>PREESCRIPCIÓN</div>
+                  <div style={{ marginTop: 4 }}>
+                    <span style={{ color: '#555' }}>Código de trazabilidad</span>
+                    <div style={{ fontFamily: 'monospace', fontSize: 14, fontWeight: 700 }}>
+                      {solicitud.codigo_trazabilidad || `#${solicitud.id}`}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Datos de la solicitud */}
+              <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 8 }}>Detalle de solicitud</div>
+              <div
+                className="no-break"
+                style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 20px', marginBottom: 12 }}
+              >
+                <PrintField label="Paciente" value={solicitud.paciente} full />
+                <PrintField label="CC. paciente" value={solicitud.cc_paciente} />
+                <PrintField label="Fecha de entrega" value={solicitud.fecha_entrega} />
+                <PrintField label="Tipo de trabajo" value={solicitud.tipo} />
+                <PrintField label="Estado" value={estadoOpt?.label || solicitud.estado} />
+                <PrintField label="Prioridad" value={prioridadOpt?.label || solicitud.prioridad} />
+                <PrintField label="Fase actual" value={faseTexto === '—' ? '' : faseTexto} />
+                <PrintField label="Progreso (%)" value={`${progresoDerivado}%`} />
+                <PrintField label="Asignado a" value={solicitud.asignado_a} />
+                <PrintField label="Odontólogo / Clínica" value={solicitud.odontologonombre} />
+                <PrintField label="Correo" value={solicitud.odontologo_email} />
+                <PrintField label="Teléfono" value={solicitud.odontologo_telefono} />
+                <PrintField label="Productos" value={stripPrices(solicitud.productos)} full />
+                <PrintField label="Piezas enviadas" value={stripPrices(solicitud.piezas_enviadas)} full />
+                <PrintField label="Indicaciones" value={solicitud.indicaciones} full />
+                <PrintField
+                  label="Documentos adjuntos"
+                  value={
+                    Array.isArray(solicitud.archivos) && solicitud.archivos.length > 0
+                      ? solicitud.archivos.map(nombreArchivoAdjunto).join(', ')
+                      : ''
+                  }
+                  full
+                />
+              </div>
+
+              {/* Dentalgrama */}
+              <div className="no-break" style={{ marginBottom: 12 }}>
+                <div style={{ fontSize: 11, color: '#555', marginBottom: 4 }}>Dientes registrados</div>
+                <DentalChart
+                  selectedTeeth={selectedTeeth}
+                  toothStatuses={{} as Record<number, ToothStatus>}
+                  onToothSelect={() => {}}
+                  onToothStatusChange={() => {}}
+                  onToothStatusClear={() => {}}
+                />
+                <div style={{ marginTop: 4, fontSize: 11 }}>
+                  Dientes: <span style={{ fontFamily: 'monospace' }}>{solicitud.dientes || '—'}</span>
+                </div>
+              </div>
+
+              <PrintField label="Notas" value={solicitud.notas} full />
+
+              {/* Firma */}
+              <div className="no-break" style={{ marginTop: 16 }}>
+                <div style={{ fontSize: 11, color: '#555', marginBottom: 4 }}>Firma del odontólogo</div>
+                {solicitud.firma_odontologo ? (
+                  <img
+                    src={solicitud.firma_odontologo}
+                    alt="Firma del odontólogo"
+                    style={{ maxHeight: 90, maxWidth: 260, objectFit: 'contain', border: '1px solid #ccc', background: '#fff' }}
+                  />
+                ) : (
+                  <div style={{ fontSize: 11, color: '#777' }}>Sin firma</div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
 
       {fichaVista && (
@@ -1418,6 +1649,17 @@ function InfoRow({ label, value }: { label: string; value: React.ReactNode }) {
     <div>
       <span className="text-xs text-muted-foreground">{label}</span>
       <span className="mt-0.5 block text-sm text-foreground break-words">{value}</span>
+    </div>
+  )
+}
+
+function PrintField({ label, value, full }: { label: string; value?: string | null; full?: boolean }) {
+  return (
+    <div className="no-break" style={{ gridColumn: full ? '1 / -1' : undefined }}>
+      <div style={{ fontSize: 11, color: '#555' }}>{label}</div>
+      <div style={{ fontSize: 12, whiteSpace: 'pre-wrap', borderBottom: '1px solid #ddd', paddingBottom: 2, minHeight: 16 }}>
+        {value && String(value).trim() ? value : '—'}
+      </div>
     </div>
   )
 }

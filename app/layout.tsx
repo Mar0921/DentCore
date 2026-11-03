@@ -1,7 +1,8 @@
-import { Analytics } from '@vercel/analytics/next'
+﻿import { Analytics } from '@vercel/analytics/next'
 import type { Metadata, Viewport } from 'next'
 import { Inter, Poppins } from 'next/font/google'
 import './globals.css'
+import { SessionSync } from '@/components/session-sync'
 
 const inter = Inter({
   subsets: ['latin'],
@@ -37,6 +38,7 @@ export default function RootLayout({
     <html lang="es" className={`${inter.variable} ${poppins.variable} bg-background`}>
       <body className="font-sans antialiased">
         {children}
+        <SessionSync />
         {process.env.NODE_ENV === 'production' && <Analytics />}
       </body>
     </html>

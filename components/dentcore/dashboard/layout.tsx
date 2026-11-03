@@ -15,7 +15,6 @@ import { Button } from '@/components/ui/button'
 
 const navItems = [
   { href: '/laboratorio', label: 'Panel general', icon: LayoutDashboard },
-  { href: '/laboratorio/informacion', label: 'Información del laboratorio', icon: FlaskConical },
   { href: '/laboratorio/empleados', label: 'Empleados', icon: Users },
   { href: '/laboratorio/solicitudes', label: 'Solicitudes', icon: ClipboardList },
 ]

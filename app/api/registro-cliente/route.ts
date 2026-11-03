@@ -12,7 +12,7 @@ export async function POST(request: Request) {
 
   try {
     const body = await request.json();
-    const { nombre, email, telefono, calle, localidad, clinica, locacion_extra, direccion_extra, password, laboratorio_id } = body;
+    const { nombre, email, telefono, calle, localidad, clinica, locacion_extra, direccion_extra, registro_medico, password, laboratorio_id } = body;
 
     if (!nombre?.trim() || !email?.trim() || !password || password.length < 6) {
       return NextResponse.json({ error: "Datos incompletos o contraseña inválida." }, { status: 400 });
@@ -47,6 +47,7 @@ export async function POST(request: Request) {
       clinica: clinica || null,
       locacion_extra: locacion_extra || null,
       direccion_extra: direccion_extra || null,
+      registro_medico: registro_medico || null,
       laboratorio_id: labId,
       tiene_acceso: true,
     }).select().single();

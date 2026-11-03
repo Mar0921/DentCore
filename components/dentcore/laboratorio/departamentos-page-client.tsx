@@ -22,6 +22,7 @@ interface Empleado {
   email: string | null
   rol: string
   departamento_id?: string | null
+  laboratorio_id?: string | null
 }
 
 interface Departamento {
@@ -58,10 +59,20 @@ const [formData, setFormData] = useState({ nombre: '', descripcion: '' })
     if (laboratorioId) loadDepartamentos()
   }, [laboratorioId])
 
+  useEffect(() => {
+    if (laboratorioId) loadEmpleados()
+    else setEmpleados([])
+  }, [laboratorioId])
+
 
   async function loadLaboratorio() {
-    const { data } = await supabase.from('laboratorio').select('id').limit(1)
-    if (data && data.length > 0) setLaboratorioId(data[0].id)
+    const { data: deps } = await supabase
+      .from('departamentos')
+      .select('laboratorio_id')
+      .not('laboratorio_id', 'is', null)
+      .order('laboratorio_id', { ascending: true })
+    const labIds = (deps?.map((d: any) => d.laboratorio_id) || []).filter(Boolean)
+    if (labIds.length > 0) setLaboratorioId(labIds[0])
   }
 
 
@@ -92,24 +103,33 @@ const [formData, setFormData] = useState({ nombre: '', descripcion: '' })
 
   async function loadEmpleados() {
     setLoadingEmpleados(true)
+    if (!laboratorioId) {
+      setEmpleados([])
+      setLoadingEmpleados(false)
+      return
+    }
 
-    // Try selecting with departamento_id; fall back if column doesn't exist yet
+    // Try selecting with departamento_id and laboratorio_id; fall back if columns don't exist yet
     const { data, error } = await supabase
       .from('empleados')
-      .select('id, nombre, email, rol, departamento_id')
+      .select('id, nombre, email, rol, departamento_id, laboratorio_id')
+      .eq('laboratorio_id', laboratorioId)
       .order('nombre', { ascending: true })
 
     if (error) {
       const msg = String(error.message || '')
-      if (msg.includes('departamento_id') || !error.message) {
-        // Column doesn't exist yet — load basic fields only
+      if (msg.includes('departamento_id') || msg.includes('laboratorio_id')) {
+        // Column doesn't exist yet — load basic fields only filtered by laboratorio_id
         const fallback = await supabase
           .from('empleados')
           .select('id, nombre, email, rol')
+          .eq('laboratorio_id', laboratorioId)
           .order('nombre', { ascending: true })
         if (fallback.data) setEmpleados(fallback.data || [])
+        else setEmpleados([])
       } else {
         console.error('Error cargando empleados:', error)
+        setEmpleados([])
       }
     } else {
       setEmpleados(data || [])
