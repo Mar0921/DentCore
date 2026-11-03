@@ -28,7 +28,17 @@ export async function GET(request: NextRequest) {
     if (laboratorioId) {
       const { data: conversaciones, error } = await supabase.from('conversaciones').select('*, cliente:cliente(id, nombre, email, telefono), solicitud:solicitudes(id, codigo_trazabilidad)').eq('laboratorio_id', laboratorioId).order('ultimo_mensaje_at', { ascending: false })
       if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-      return NextResponse.json({ data: conversaciones }, { status: 200 })
+
+      const ultimasPorCliente = new Map<string, any>()
+      for (const c of (conversaciones || [])) {
+        const prev = ultimasPorCliente.get(c.cliente_id)
+        const fecha = c.ultimo_mensaje_at || c.created_at
+        const fechaPrev = prev ? (prev.ultimo_mensaje_at || prev.created_at) : null
+        if (!prev || new Date(fecha) > new Date(fechaPrev)) {
+          ultimasPorCliente.set(c.cliente_id, c)
+        }
+      }
+      return NextResponse.json({ data: Array.from(ultimasPorCliente.values()) }, { status: 200 })
     }
 
     if (clienteId) {

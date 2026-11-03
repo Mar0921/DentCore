@@ -210,6 +210,7 @@ export default function InvitadoSolicitudDetallePage() {
   const [fases, setFases] = useState<FaseLite[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedTeethState, setSelectedTeethState] = useState<number[]>([])
+  const [selectedFaseId, setSelectedFaseId] = useState<string | null>(null)
 
   const [posForm, setPosForm] = useState({
     email: '',
@@ -288,6 +289,23 @@ export default function InvitadoSolicitudDetallePage() {
 
         if (!error && data && data.length > 0) {
           setFases(data as FaseLite[])
+          if (!solicitud?.fase_id) {
+            const { data: sf } = await supabase
+              .from('solicitud_fases')
+              .select('producto_fase_id, estado')
+              .eq('solicitud_id', solicitud!.id)
+            const ids = (sf || []).map((x: any) => x.producto_fase_id).filter(Boolean)
+            if (ids.length) {
+              const { data: pf } = await supabase
+                .from('producto_fases')
+                .select('id, fase_id')
+                .in('id', ids)
+              const map = new Map((pf || []).map((x: any) => [x.id, x.fase_id]))
+              const current = (sf || []).find((x: any) => x.estado && x.estado !== 'completada') || (sf || [])[ (sf || []).length - 1]
+              const fid = current ? map.get(current.producto_fase_id) : null
+              if (fid) setSelectedFaseId(fid)
+            }
+          }
         }
       } catch {
         // ignore
@@ -414,16 +432,16 @@ export default function InvitadoSolicitudDetallePage() {
 
   const estadoOpt = ESTADO_OPTIONS.find((e) => e.value === solicitud?.estado)
   const prioridadOpt = PRIORIDAD_OPTIONS.find((p) => p.value === solicitud?.prioridad)
-  const faseSeleccionada = fases.find((f) => f.id === solicitud?.fase_id)
+  const faseSeleccionada = fases.find((f) => f.id === (selectedFaseId ?? solicitud?.fase_id))
   const progresoDerivado = useMemo(() => {
     if (!solicitud) return 0
-    const fase = fases.find((f) => f.id === solicitud.fase_id)
+    const fase = fases.find((f) => f.id === (selectedFaseId ?? solicitud.fase_id))
     if (fase && fases.length > 0) {
-      const maxOrden = Math.max(...fases.map((f) => f.orden))
-      return Math.round((fase.orden / maxOrden) * 100)
+      const idx = fases.indexOf(fase)
+      return Math.round(((idx + 1) / fases.length) * 100)
     }
     return solicitud.progreso ?? 0
-  }, [solicitud, fases])
+  }, [solicitud, fases, selectedFaseId])
 
   const handlePosSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -553,7 +571,7 @@ export default function InvitadoSolicitudDetallePage() {
 
   const faseTexto = faseSeleccionada
     ? `${faseSeleccionada.orden}. ${faseSeleccionada.nombre}`
-    : (solicitud.fase_id || '—')
+    : ((selectedFaseId || solicitud.fase_id) || '—')
 
   return (
     <AppShell sidebar="invitado" showSidebar={false}>

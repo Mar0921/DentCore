@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from "react"
+import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabase"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -9,6 +10,7 @@ import { User, Mail, Phone, Building2, Edit, Save, X, Plus, FileText, ScrollText
 import { SolicitudDetail } from "@/components/dentcore/solicitud/solicitud-detail"
 
 export function InvitadoLaboratorioPageClient() {
+  const router = useRouter()
   const [invitado, setInvitado] = useState<any>(null)
   const [editing, setEditing] = useState(false)
   const [formData, setFormData] = useState({
@@ -65,7 +67,6 @@ export function InvitadoLaboratorioPageClient() {
 
       const nombreBuscado = clienteData?.nombre
 
-      // Try matching by odontologo_id first (find odontologo by name)
       let result: any[] = []
       if (nombreBuscado) {
         const { data: odonto } = await supabase
@@ -84,7 +85,6 @@ export function InvitadoLaboratorioPageClient() {
         }
       }
 
-      // Also try matching by odontologonombre
       if (result.length === 0 && nombreBuscado) {
         const { data } = await supabase
           .from('solicitudes')
@@ -242,6 +242,7 @@ export function InvitadoLaboratorioPageClient() {
           </Card>
         </div>
 
+
         <div className="lg:col-span-2">
           <Card>
             <CardHeader>
@@ -266,10 +267,7 @@ export function InvitadoLaboratorioPageClient() {
                     <div
                       key={s.id}
                       className="cursor-pointer rounded-lg border border-border p-4 transition-colors hover:bg-secondary/50"
-                      onClick={() => {
-                        setSelectedSolicitud(s)
-                        setDetailOpen(true)
-                      }}
+                      onClick={() => router.push(`/invitado-laboratorio/solicitudes/${s.id}`)}
                     >
                       <div className="flex items-center justify-between">
                         <div>
@@ -294,6 +292,7 @@ export function InvitadoLaboratorioPageClient() {
             </CardContent>
           </Card>
         </div>
+
       </div>
 
       <SolicitudDetail
