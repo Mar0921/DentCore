@@ -86,12 +86,14 @@ export function Pricing() {
               </ul>
 
               <Button
-                render={<Link href={`/suscripcion?plan=${plan.id}`} />}
+                render={plan.id === 'professional' ? undefined : <Link href={`/suscripcion?plan=${plan.id}`} />}
+                disabled={plan.id === 'professional'}
                 className={cn(
                   'group mt-8 h-11 w-full gap-2 rounded-full',
                   plan.featured
                     ? 'bg-accent text-accent-foreground hover:bg-accent/90'
                     : '',
+                  plan.id === 'professional' && 'cursor-not-allowed opacity-60',
                 )}
                 variant={plan.featured ? 'default' : 'outline'}
               >
