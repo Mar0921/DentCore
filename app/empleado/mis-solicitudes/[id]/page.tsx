@@ -211,6 +211,8 @@ export default function EmpleadoSolicitudDetallePage() {
   const [guardandoMaterial, setGuardandoMaterial] = useState(false)
   const [eliminandoMaterialId, setEliminandoMaterialId] = useState<string | null>(null)
   const [fichas, setFichas] = useState<FichaRegistro[]>([])
+  const [solicitudFases, setSolicitudFases] = useState<any[]>([])
+  const [totalFasesCount, setTotalFasesCount] = useState(0)
   const [incidencias, setIncidencias] = useState<any[]>([])
   const [medidasPorInc, setMedidasPorInc] = useState<Record<string, any[]>>({})
   const [fichaVista, setFichaVista] = useState<FichaRegistro | null>(null)
@@ -238,7 +240,7 @@ export default function EmpleadoSolicitudDetallePage() {
 
   useEffect(() => {
     if (solicitud) {
-      setSelectedFaseId(solicitud.fase_id)
+      setSelectedFaseId((prev) => prev ?? solicitud.fase_id)
     }
   }, [solicitud])
 
@@ -271,22 +273,30 @@ export default function EmpleadoSolicitudDetallePage() {
 
         if (!error && data && data.length > 0) {
           setFases(data as FaseLite[])
-          if (!solicitud?.fase_id) {
-            const { data: sf } = await supabase
-              .from('solicitud_fases')
-              .select('producto_fase_id, estado')
-              .eq('solicitud_id', solicitud!.id)
-            const ids = (sf || []).map((x: any) => x.producto_fase_id).filter(Boolean)
-            if (ids.length) {
-              const { data: pf } = await supabase
-                .from('producto_fases')
-                .select('id, fase_id')
-                .in('id', ids)
-              const map = new Map((pf || []).map((x: any) => [x.id, x.fase_id]))
+          const { data: sf } = await supabase
+            .from('solicitud_fases')
+            .select('producto_fase_id, estado, fecha_finalizacion')
+            .eq('solicitud_id', solicitud!.id)
+          setSolicitudFases(sf || [])
+          const ids = (sf || []).map((x: any) => x.producto_fase_id).filter(Boolean)
+          if (ids.length) {
+            const { data: pf } = await supabase
+              .from('producto_fases')
+              .select('id, fase_id')
+              .in('id', ids)
+            const map = new Map((pf || []).map((x: any) => [x.id, x.fase_id]))
+            const latest = (sf || [])
+              .filter((x: any) => x.fecha_finalizacion)
+              .sort((a: any, b: any) => new Date(b.fecha_finalizacion).getTime() - new Date(a.fecha_finalizacion).getTime())[0]
+            const latestFaseId = latest ? map.get(latest.producto_fase_id) : null
+            if (latestFaseId) setSelectedFaseId(latestFaseId)
+            else if (!solicitud?.fase_id) {
               const current = (sf || []).find((x: any) => x.estado && x.estado !== 'completada') || sf?.[sf.length - 1]
               const fid = current ? map.get(current.producto_fase_id) : null
               if (fid) setSelectedFaseId(fid)
             }
+          } else if (!solicitud?.fase_id) {
+            // no-op
           }
         }
       } catch {
@@ -610,12 +620,27 @@ export default function EmpleadoSolicitudDetallePage() {
     }
   }, [solicitud])
 
+  useEffect(() => {
+    if (!productoIds.length) { setTotalFasesCount(0); return }
+    supabase.from('producto_fases').select('id', { count: 'exact', head: true }).in('producto_id', productoIds)
+      .then(({ count }) => setTotalFasesCount(count || 0))
+  }, [productoIds])
+
   const selectedTeeth = useMemo(() => parseDientes(solicitud?.dientes), [solicitud?.dientes])
 
   const estadoOpt = ESTADO_OPTIONS.find((e) => e.value === solicitud?.estado)
   const prioridadOpt = PRIORIDAD_OPTIONS.find((p) => p.value === solicitud?.prioridad)
   const faseSeleccionada = fases.find((f) => f.id === (selectedFaseId ?? solicitud?.fase_id))
   const progresoDerivado = useMemo(() => {
+    if (totalFasesCount > 0) {
+      const completadas = solicitudFases.filter((sf: any) => (sf.estado || '').toLowerCase() === 'completado').length
+      return Math.round((completadas / totalFasesCount) * 100)
+    }
+    if (solicitudFases.length > 0) {
+      const total = solicitudFases.length
+      const completadas = solicitudFases.filter((sf: any) => (sf.estado || '').toLowerCase() === 'completado').length
+      return Math.round((completadas / total) * 100)
+    }
     if (!solicitud) return 0
     const fase = fases.find((f) => f.id === (selectedFaseId ?? solicitud.fase_id))
     if (fase && fases.length > 0) {
@@ -623,7 +648,7 @@ export default function EmpleadoSolicitudDetallePage() {
       return Math.round((fase.orden / maxOrden) * 100)
     }
     return solicitud.progreso ?? 0
-  }, [selectedFaseId, solicitud, fases])
+  }, [selectedFaseId, solicitud, fases, solicitudFases, totalFasesCount])
 
   async function handleSaveFase() {
     if (!solicitud || savingFase) return
@@ -722,7 +747,7 @@ export default function EmpleadoSolicitudDetallePage() {
 
   const faseTexto = faseSeleccionada
     ? `${faseSeleccionada.orden}. ${faseSeleccionada.nombre}`
-    : (selectedFaseId || solicitud.fase_id || '—')
+    : (selectedFaseId || solicitud.fase_id || (fases.length ? `${fases[fases.length - 1].orden}. ${fases[fases.length - 1].nombre}` : '—'))
 
   return (
     <AppShell sidebar="empleado">
@@ -838,7 +863,6 @@ export default function EmpleadoSolicitudDetallePage() {
               <InfoRow label="Fase actual" value={faseTexto} />
             )}
             <InfoRow label="Progreso" value={`${progresoDerivado}%`} />
-            <InfoRow label="Asignado a" value={solicitud.asignado_a || '—'} />
             <InfoRow label="Odontólogo / Clínica" value={solicitud.odontologonombre || '—'} />
             <InfoRow label="Correo" value={solicitud.odontologo_email || '—'} />
             <InfoRow label="Teléfono" value={solicitud.odontologo_telefono || '—'} />

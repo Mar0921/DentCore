@@ -2,22 +2,10 @@
 
 import { useState, useEffect, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
-import Link from 'next/link'
-import { MoreHorizontal, Search, Edit, Calendar, Plus, AlertCircle } from 'lucide-react'
+import { Search, Edit, Calendar } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import {
-  Card,
-  CardHeader,
-  CardTitle,
-  CardContent,
-} from '@/components/ui/card'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
+import { Card, CardContent } from '@/components/ui/card'
 import { supabase } from '@/lib/supabase'
 import { useLabUser } from '@/hooks/use-lab-user'
 import type { Trabajo, TrabajoTab } from '@/types/trabajo'
@@ -49,6 +37,31 @@ const ESTADO_MAP: Record<string, Trabajo['estado']> = {
   entregado: 'entregado',
   cancelado: 'retrasado',
   retrasado: 'retrasado',
+}
+
+interface AvanceSolicitud {
+  total: number
+  completadas: number
+  progreso: number
+  ultimaFase: string | null
+}
+
+function normalize(value?: string | null) {
+  return (value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase()
+}
+
+function nombresProductos(productos?: string | null): string[] {
+  const nombres: string[] = []
+  for (const raw of (productos || '').split(';').map((p) => p.trim()).filter(Boolean)) {
+    const m = raw.match(/^(.*?)\s+x(\d+)\s*\(([^)]*)\)/i)
+    const nombre = (m ? m[1] : raw).trim()
+    if (!nombres.some((n) => normalize(n) === normalize(nombre))) nombres.push(nombre)
+  }
+  return nombres
 }
 
 function parseDate(dateStr: string | null | undefined): Date | null {
@@ -134,8 +147,81 @@ export function TrabajosTable({ empleado = false }: { empleado?: boolean }) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
+  const [catalogoProductos, setCatalogoProductos] = useState<{ id: string; titulo: string | null; nombre: string | null }[]>([])
+  const [productoFases, setProductoFases] = useState<{ id: string; producto_id: string; fase_id: string | null }[]>([])
+  const [avanceFilas, setAvanceFilas] = useState<{ solicitud_id: string; producto_fase_id: string; estado: string | null; created_at: string | null; fecha_finalizacion: string | null }[]>([])
+  const [fasesNombre, setFasesNombre] = useState<Record<string, string>>({})
+  const [fasesOrden, setFasesOrden] = useState<Record<string, number>>({})
+  const [avanceListo, setAvanceListo] = useState(false)
+
   useEffect(() => {
     loadTrabajos()
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+    async function fetchAvance() {
+      try {
+        // Consultas base: exactamente las mismas columnas que usa Solicitudes (el progreso depende de estas)
+        const [prod, rel, av] = await Promise.all([
+          supabase.from('productos').select('id, titulo, nombre'),
+          supabase.from('producto_fases').select('id, producto_id'),
+          supabase.from('solicitud_fases').select('solicitud_id, producto_fase_id, estado'),
+        ])
+        const baseError = prod.error || rel.error || av.error
+        if (baseError) throw baseError
+
+        // Consultas extra (solo para "Fase actual"): si fallan, el progreso igual se calcula
+        const [relFase, avFechas, fas] = await Promise.all([
+          supabase.from('producto_fases').select('id, fase_id'),
+          supabase.from('solicitud_fases').select('solicitud_id, producto_fase_id, fecha_finalizacion'),
+          supabase.from('fases').select('id, nombre, orden'),
+        ])
+        if (relFase.error) console.warn('producto_fases.fase_id:', relFase.error.message)
+        if (avFechas.error) console.warn('solicitud_fases fechas:', avFechas.error.message)
+        if (fas.error) console.warn('fases:', fas.error.message)
+        if (cancelled) return
+
+        const faseIdPorPF: Record<string, string | null> = {}
+        ;((relFase.data as any[]) || []).forEach((r) => {
+          faseIdPorPF[r.id] = r.fase_id ?? null
+        })
+        const fechasPorClave: Record<string, { created_at: string | null; fecha_finalizacion: string | null }> = {}
+        ;((avFechas.data as any[]) || []).forEach((r) => {
+          const k = `${r.solicitud_id}|${r.producto_fase_id}`
+          const prev = fechasPorClave[k]
+          if (!prev || (r.fecha_finalizacion && (!prev.fecha_finalizacion || r.fecha_finalizacion > prev.fecha_finalizacion))) {
+            fechasPorClave[k] = { created_at: r.created_at ?? null, fecha_finalizacion: r.fecha_finalizacion ?? null }
+          }
+        })
+        const nombres: Record<string, string> = {}
+        const ordenes: Record<string, number> = {}
+        ;((fas.data as any[]) || []).forEach((f) => {
+          if (f.id) {
+            nombres[f.id] = f.nombre || ''
+            if (typeof f.orden === 'number') ordenes[f.id] = f.orden
+          }
+        })
+
+        setCatalogoProductos((prod.data as any[]) || [])
+        setProductoFases(((rel.data as any[]) || []).map((r) => ({ ...r, fase_id: faseIdPorPF[r.id] ?? null })))
+        setAvanceFilas(
+          ((av.data as any[]) || []).map((r) => {
+            const extra = fechasPorClave[`${r.solicitud_id}|${r.producto_fase_id}`]
+            return { ...r, created_at: extra?.created_at ?? null, fecha_finalizacion: extra?.fecha_finalizacion ?? null }
+          }),
+        )
+        setFasesNombre(nombres)
+        setFasesOrden(ordenes)
+        setAvanceListo(true)
+      } catch (e) {
+        console.error('Error cargando el avance:', e)
+      }
+    }
+    fetchAvance()
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   async function loadTrabajos() {
@@ -153,7 +239,7 @@ export function TrabajosTable({ empleado = false }: { empleado?: boolean }) {
 
       if (fetchError) throw fetchError
 
-       const mapped: Trabajo[] = (data || []).map((s: any) => {
+      const mapped: Trabajo[] = (data || []).map((s: any) => {
         const dbEstado = s.estado || 'pendiente'
         let uiEstado = ESTADO_MAP[dbEstado] || dbEstado
         if (isOverdue(s.fecha_entrega, dbEstado)) {
@@ -165,7 +251,7 @@ export function TrabajosTable({ empleado = false }: { empleado?: boolean }) {
           id: s.id,
           codigo: s.codigo_trazabilidad || s.codigo || s.id?.substring(0, 14) || '—',
           estado: uiEstado as Trabajo['estado'],
-          caja: '-',
+          caja: s.caja || '-',
           cliente: s.odontologonombre || s.cliente || s.nombre_cliente || '—',
           clienteCodigo: '-',
           doctor: s.odontologonombre || '',
@@ -173,7 +259,8 @@ export function TrabajosTable({ empleado = false }: { empleado?: boolean }) {
           faseActual: (s.fase_id && fasesMap[s.fase_id]) || s.faseActual || s.fase_actual || '—',
           fechaEntrega: formatDateToDDMMYYYY(fechaEntrega),
           horaEntrega: extractTime(fechaEntrega) || '-',
-        }
+          productos: s.productos ?? null,
+        } as Trabajo
       })
 
       const { data: clientesData } = await supabase
@@ -192,6 +279,66 @@ export function TrabajosTable({ empleado = false }: { empleado?: boolean }) {
       setLoading(false)
     }
   }
+
+  // Avance por solicitud: fases completadas / fases de sus productos, y última fase agregada
+  const avancePorSolicitud = useMemo(() => {
+    const result: Record<string, AvanceSolicitud> = {}
+    if (!avanceListo) return result
+
+    const filasPorSolicitud: Record<string, typeof avanceFilas> = {}
+    avanceFilas.forEach((f) => {
+      ;(filasPorSolicitud[f.solicitud_id] ||= []).push(f)
+    })
+    const faseIdPorProductoFase = new Map(productoFases.map((pf) => [pf.id, pf.fase_id]))
+
+    trabajos.forEach((t) => {
+      const nombres = nombresProductos(t.productos).map(normalize)
+      // Igual que en Solicitudes: coincide por título O por nombre
+      const productoIds = nombres
+        .map((n) =>
+          catalogoProductos.find((p) => (n !== '' && normalize(p.titulo) === n) || (n !== '' && normalize(p.nombre) === n)),
+        )
+        .filter((p): p is NonNullable<typeof p> => !!p)
+        .map((p) => p.id)
+      const pfIds = new Set(
+        productoFases.filter((pf) => productoIds.includes(pf.producto_id)).map((pf) => pf.id),
+      )
+
+      const filas = filasPorSolicitud[t.id] || []
+      const completadas = new Set(
+        filas
+          .filter((f) => ['completada', 'completado'].includes(normalize(f.estado)) && pfIds.has(f.producto_fase_id))
+          .map((f) => f.producto_fase_id),
+      ).size
+      const total = pfIds.size
+
+       // Fase actual = la última fase finalizada (fecha de finalización más reciente); desempata el orden de fase
+       const filasCompletas = filas.filter(
+         (f) => pfIds.has(f.producto_fase_id) && ['completada', 'completado'].includes(normalize(f.estado)),
+       )
+       const ordenDe = (f: (typeof filasCompletas)[number]) => {
+         const fid = faseIdPorProductoFase.get(f.producto_fase_id)
+         return fid != null && fasesOrden[fid] != null ? fasesOrden[fid] : -1
+       }
+       const ultima = [...filasCompletas].sort((a, b) => {
+         const d =
+           (b.fecha_finalizacion ? new Date(b.fecha_finalizacion).getTime() : 0) -
+           (a.fecha_finalizacion ? new Date(a.fecha_finalizacion).getTime() : 0)
+         if (d !== 0) return d
+         return ordenDe(b) - ordenDe(a)
+       })[0]
+       const faseId = ultima ? faseIdPorProductoFase.get(ultima.producto_fase_id) : null
+       const ultimaFase = (faseId && fasesNombre[faseId]) || null
+
+      result[t.id] = {
+        total,
+        completadas,
+        progreso: total > 0 ? Math.round((completadas / total) * 100) : 0,
+        ultimaFase,
+      }
+    })
+    return result
+  }, [trabajos, catalogoProductos, productoFases, avanceFilas, fasesNombre, fasesOrden, avanceListo])
 
   const filtered = useMemo(() => {
     return trabajos.filter((t) => {
@@ -223,23 +370,9 @@ export function TrabajosTable({ empleado = false }: { empleado?: boolean }) {
   return (
     <div className="space-y-4">
       {/* Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="font-heading text-2xl font-bold text-primary">Trabajos</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            {loading ? 'Cargando...' : `Mostrando ${filtered.length} trabajo(s)`}
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" className="gap-2">
-            <MoreHorizontal className="size-4" />
-            Acciones
-          </Button>
-          <Button className="gap-2 rounded-full">
-            <Plus className="size-4" />
-            Nuevo trabajo
-          </Button>
-        </div>
+      <div>
+        <h1 className="font-heading text-2xl font-bold text-primary">Trabajos</h1>
+        {labName ? <p className="mt-1 text-sm text-muted-foreground">{labName}</p> : null}
       </div>
 
       {/* Tabs */}
@@ -248,7 +381,6 @@ export function TrabajosTable({ empleado = false }: { empleado?: boolean }) {
           <Button
             key={tab.key}
             variant={activeTab === tab.key ? 'default' : 'outline'}
-            className="gap-2"
             onClick={() => setActiveTab(tab.key)}
           >
             {tab.label}
@@ -256,18 +388,9 @@ export function TrabajosTable({ empleado = false }: { empleado?: boolean }) {
         ))}
       </div>
 
-      {/* Filters */}
+      {/* Búsqueda */}
       <Card>
-        <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-2">
-            <Button variant="outline" className="gap-2">
-              <Search className="size-4" />
-              Ver filtros
-            </Button>
-            <Button variant="ghost" className="text-xs">
-              Borrar filtros
-            </Button>
-          </div>
+        <CardContent className="flex items-center justify-end p-4">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
@@ -280,161 +403,126 @@ export function TrabajosTable({ empleado = false }: { empleado?: boolean }) {
         </CardContent>
       </Card>
 
-      {/* Table */}
+      {/* Tabla */}
       <Card>
         <CardContent className="p-0">
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
               <thead>
                 <tr className="border-b border-border bg-secondary/30">
-                  <th className="px-4 py-3 font-medium text-muted-foreground">
-                    Código trabajo
-                  </th>
-                  <th className="px-4 py-3 font-medium text-muted-foreground">
-                    Estado
-                  </th>
-                  <th className="px-4 py-3 font-medium text-muted-foreground">
-                    Caja
-                  </th>
-                  <th className="px-4 py-3 font-medium text-muted-foreground">
-                    Cliente
-                  </th>
-                  <th className="px-4 py-3 font-medium text-muted-foreground">
-                    Doctor/a
-                  </th>
-                  <th className="px-4 py-3 font-medium text-muted-foreground">
-                    Paciente
-                  </th>
-                  <th className="px-4 py-3 font-medium text-muted-foreground">
-                    Fase actual
-                  </th>
-                  <th className="px-4 py-3 font-medium text-muted-foreground">
-                    Fecha entrega
-                  </th>
-                  <th className="px-4 py-3 text-right font-medium text-muted-foreground">
-                    Acciones
-                  </th>
+                  <th className="px-4 py-3 font-medium text-muted-foreground">Código</th>
+                  <th className="px-4 py-3 font-medium text-muted-foreground">Estado</th>
+                  <th className="px-4 py-3 font-medium text-muted-foreground">Doctor</th>
+                  <th className="px-4 py-3 font-medium text-muted-foreground">Paciente</th>
+                  <th className="px-4 py-3 font-medium text-muted-foreground">Fase actual</th>
+                  <th className="px-4 py-3 font-medium text-muted-foreground">Progreso</th>
+                  <th className="px-4 py-3 font-medium text-muted-foreground">Fecha entrega</th>
+                  <th className="px-4 py-3 text-right font-medium text-muted-foreground">Acciones</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
                 {loading ? (
-                  [...Array(5)].map((_, i) => (
-                    <tr key={i}>
-                      <td colSpan={9} className="px-4 py-4">
-                        <div className="h-4 animate-pulse rounded bg-secondary max-w-[80%]"></div>
-                      </td>
-                    </tr>
-                  ))
+                  <tr>
+                    <td colSpan={8} className="px-6 py-12 text-center text-sm text-muted-foreground">
+                      Cargando trabajos…
+                    </td>
+                  </tr>
                 ) : error ? (
                   <tr>
-                    <td colSpan={9} className="px-4 py-6">
-                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                        <AlertCircle className="size-4" />
-                        <span>{error}</span>
-                      </div>
+                    <td colSpan={8} className="px-6 py-12 text-center text-sm text-destructive">
+                      {error}
                     </td>
                   </tr>
                 ) : (
                   filtered.map((trabajo) => {
-                  const estado = estadoConfig[trabajo.estado] || { label: trabajo.estado, color: 'bg-secondary text-secondary-foreground' }
-                  return (
-                    <tr key={trabajo.id} className="transition-colors hover:bg-secondary/30">
-                      <td className="px-4 py-4">
-                        <span className="font-mono text-xs text-primary hover:underline cursor-pointer">
-                          {trabajo.codigo}
-                        </span>
-                      </td>
-                      <td className="px-4 py-4">
-                        <span
-                          className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ${estado.color}`}
-                        >
-                          {estado.label}
-                        </span>
-                      </td>
-                      <td className="px-4 py-4 text-muted-foreground">
-                        {trabajo.caja}
-                      </td>
-                      <td className="px-4 py-4">
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-xs text-muted-foreground">
-                            {trabajo.clienteCodigo}
+                    const estado = estadoConfig[trabajo.estado] || estadoConfig.pendiente
+                    const avance = avancePorSolicitud[trabajo.id]
+                    const faseActual = avance?.ultimaFase || trabajo.faseActual || '—'
+                    return (
+                      <tr key={trabajo.id} className="transition-colors hover:bg-secondary/30">
+                        <td className="px-4 py-4">
+                          <span className="font-mono text-xs text-primary hover:underline cursor-pointer">
+                            {trabajo.codigo}
                           </span>
-                          {(() => {
-                            const clienteId = clienteIdMap[trabajo.cliente]
-                            const href = empleado
-                              ? clienteId
-                                ? `/empleado/clientes/${clienteId}`
-                                : null
-                              : clienteId
-                                ? `/laboratorio/clientes/${clienteId}`
-                                : null
-                            if (!href) {
-                              return <span className="font-medium text-foreground">{trabajo.cliente}</span>
-                            }
-                            return (
-                              <Link
-                                href={href}
-                                className="font-medium text-primary hover:underline cursor-pointer"
-                              >
-                                {trabajo.cliente}
-                              </Link>
-                            )
-                          })()}
-                        </div>
-                      </td>
-                      <td className="px-4 py-4 text-muted-foreground">
-                        {trabajo.doctor}
-                      </td>
-                      <td className="px-4 py-4 text-foreground">
-                        {trabajo.paciente}
-                      </td>
-                      <td className="px-4 py-4">
-                        <span className="inline-flex rounded-full bg-secondary/50 px-2.5 py-1 text-xs font-medium text-foreground">
-                          {trabajo.faseActual}
-                        </span>
-                      </td>
-                      <td className="px-4 py-4">
-                        <div className="text-xs">
-                          <span className={trabajo.fechaEntrega !== '-' ? 'text-destructive font-medium' : 'text-muted-foreground'}>
-                            {trabajo.fechaEntrega}
+                        </td>
+                        <td className="px-4 py-4">
+                          <span
+                            className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ${estado.color}`}
+                          >
+                            {estado.label}
                           </span>
-                          {trabajo.horaEntrega && (
-                            <span className="ml-1 text-muted-foreground">
-                              {trabajo.horaEntrega}
-                            </span>
+                        </td>
+                        <td className="px-4 py-4 text-muted-foreground">
+                          {trabajo.doctor}
+                        </td>
+                        <td className="px-4 py-4 text-foreground">
+                          {trabajo.paciente}
+                        </td>
+                        <td className="px-4 py-4">
+                          <span className="inline-flex rounded-full bg-secondary/50 px-2.5 py-1 text-xs font-medium text-foreground">
+                            {faseActual}
+                          </span>
+                        </td>
+                        <td className="px-4 py-4">
+                          {avance ? (
+                            <div
+                              className="flex items-center gap-2"
+                              title={`${avance.completadas} de ${avance.total} fases completadas`}
+                            >
+                              <div className="h-1.5 w-24 rounded-full bg-secondary">
+                                <div
+                                  className="h-1.5 rounded-full bg-primary"
+                                  style={{ width: `${avance.progreso}%` }}
+                                />
+                              </div>
+                              <span className="text-xs text-muted-foreground">{avance.progreso}%</span>
+                            </div>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">—</span>
                           )}
-                        </div>
-                      </td>
-                      <td className="px-4 py-4 text-right">
-                        <div className="flex items-center justify-end gap-1">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="size-8"
-                            onClick={() => router.push(empleado ? `/empleado/mis-solicitudes/${trabajo.id}` : `/laboratorio/solicitudes/${trabajo.id}`)}
-                            title="Ver/editar"
-                          >
-                            <Edit className="size-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="size-8"
-                            onClick={() => router.push('/calendario')}
-                            title="Ver en calendario"
-                          >
-                            <Calendar className="size-4" />
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
+                        </td>
+                        <td className="px-4 py-4">
+                          <div className="text-xs">
+                            <span className={trabajo.fechaEntrega !== '-' ? 'text-destructive font-medium' : 'text-muted-foreground'}>
+                              {trabajo.fechaEntrega}
+                            </span>
+                            {trabajo.horaEntrega && (
+                              <span className="ml-1 text-muted-foreground">
+                                {trabajo.horaEntrega}
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-4 py-4 text-right">
+                          <div className="flex items-center justify-end gap-1">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="size-8"
+                              onClick={() => router.push(empleado ? `/empleado/mis-solicitudes/${trabajo.id}` : `/laboratorio/solicitudes/${trabajo.id}`)}
+                              title="Ver/editar"
+                            >
+                              <Edit className="size-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="size-8"
+                              onClick={() => router.push('/calendario')}
+                              title="Ver en calendario"
+                            >
+                              <Calendar className="size-4" />
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
                     )
                   })
                 )}
               </tbody>
             </table>
           </div>
-          {filtered.length === 0 && (
+          {!loading && !error && filtered.length === 0 && (
             <div className="px-6 py-12 text-center text-sm text-muted-foreground">
               No se encontraron trabajos con ese criterio.
             </div>
@@ -444,5 +532,3 @@ export function TrabajosTable({ empleado = false }: { empleado?: boolean }) {
     </div>
   )
 }
-
-

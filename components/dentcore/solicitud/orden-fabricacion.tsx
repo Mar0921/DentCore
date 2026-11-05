@@ -44,6 +44,17 @@ interface Registro {
   fecha_prueba: string
 }
 
+/**
+ * Resumen del avance de la orden, calculado con las fases GUARDADAS:
+ * progreso = fases completadas / total de fases de todos los productos.
+ */
+export interface AvanceOrden {
+  total: number
+  completadas: number
+  progreso: number // 0-100
+  ultimaFase: string | null // "FASE (Producto)" de la última fase completada guardada
+}
+
 // Material del catálogo del laboratorio
 interface MaterialCatalogo {
   id: string
@@ -154,14 +165,22 @@ function parseProductosSolicitud(productos?: string | null): ProductoSolicitud[]
   return lista
 }
 
-export function OrdenFabricacion({ solicitud }: { solicitud: any }) {
+export function OrdenFabricacion({
+  solicitud,
+  onAvanceChange,
+}: {
+  solicitud: any
+  /** Se llama con el avance calculado (o null mientras carga) cada vez que cambian las fases guardadas */
+  onAvanceChange?: (avance: AvanceOrden | null) => void
+}) {
   const [lab, setLab] = useState<any>(null)
-const [tecnico, setTecnico] = useState('')
+  const [tecnico, setTecnico] = useState('')
   const [grupos, setGrupos] = useState<GrupoProducto[]>([])
   const [fasesLoading, setFasesLoading] = useState(false)
   const [empleados, setEmpleados] = useState<{ id: string; nombre: string }[]>([])
   const [registros, setRegistros] = useState<Record<string, Registro>>({})
   const [guardados, setGuardados] = useState<Record<string, Registro>>({})
+  const [avanceListo, setAvanceListo] = useState(false)
   const [guardandoId, setGuardandoId] = useState<string | null>(null)
   const [avanceError, setAvanceError] = useState<string | null>(null)
   const [incidencias, setIncidencias] = useState<Incidencia[]>([])
@@ -304,6 +323,7 @@ const [tecnico, setTecnico] = useState('')
 
   // Avance guardado de cada fase para esta solicitud
   useEffect(() => {
+    setAvanceListo(false)
     if (!solicitud?.id) {
       setRegistros({})
       setGuardados({})
@@ -335,11 +355,49 @@ const [tecnico, setTecnico] = useState('')
         }
         setRegistros(mapa)
         setGuardados(mapa)
+        setAvanceListo(true)
       })
     return () => {
       cancelled = true
     }
   }, [solicitud?.id])
+
+  // Progreso = fases completadas (guardadas) / total de fases de todos los productos.
+  // Última fase guardada = la completada con la fecha de finalización más reciente
+  // (si empatan, la que aparece más tarde en el orden de la lista).
+  useEffect(() => {
+    if (!onAvanceChange) return
+    if (fasesLoading || !avanceListo) {
+      onAvanceChange(null)
+      return
+    }
+
+    let total = 0
+    let completadas = 0
+    let mejor: { fecha: string; gi: number; fi: number; etiqueta: string } | null = null
+
+    grupos.forEach((g, gi) => {
+      g.fases.forEach((f, fi) => {
+        total += 1
+        const guardado = guardados[f.id]
+        if (guardado?.estado !== 'completado') return
+        completadas += 1
+        const fecha = guardado.fecha_finalizacion || ''
+        const esMejor =
+          !mejor ||
+          fecha > mejor.fecha ||
+          (fecha === mejor.fecha && (gi > mejor.gi || (gi === mejor.gi && fi > mejor.fi)))
+        if (esMejor) mejor = { fecha, gi, fi, etiqueta: `${f.nombre} (${g.titulo})` }
+      })
+    })
+
+    onAvanceChange({
+      total,
+      completadas,
+      progreso: total > 0 ? Math.round((completadas / total) * 100) : 0,
+      ultimaFase: mejor ? (mejor as { etiqueta: string }).etiqueta : null,
+    })
+  }, [grupos, guardados, fasesLoading, avanceListo, onAvanceChange])
 
   function setCampo(productoFaseId: string, campo: keyof Registro, valor: string) {
     setRegistros((prev) => ({

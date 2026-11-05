@@ -29,7 +29,7 @@ export default function EmpleadoClientesPage() {
     loadClientes()
   }, [])
 
-   async function loadClientes() {
+  async function loadClientes() {
     setLoading(true)
     try {
       const { data: { user } } = await supabase.auth.getUser()
@@ -108,7 +108,6 @@ export default function EmpleadoClientesPage() {
                 <thead>
                   <tr className="border-b border-border bg-secondary/30">
                     <th className="px-4 py-3 font-medium text-muted-foreground">Nombre</th>
-                    <th className="px-4 py-3 font-medium text-muted-foreground">Código</th>
                     <th className="px-4 py-3 font-medium text-muted-foreground">Email</th>
                     <th className="px-4 py-3 font-medium text-muted-foreground">Teléfono</th>
                     <th className="px-4 py-3 font-medium text-muted-foreground">Clínica</th>
@@ -120,13 +119,13 @@ export default function EmpleadoClientesPage() {
                 <tbody className="divide-y divide-border">
                   {loading ? (
                     <tr>
-                      <td colSpan={6} className="px-4 py-8 text-center text-sm text-muted-foreground">
+                      <td colSpan={5} className="px-4 py-8 text-center text-sm text-muted-foreground">
                         Cargando clientes...
                       </td>
                     </tr>
                   ) : filtered.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="px-4 py-12 text-center text-sm text-muted-foreground">
+                      <td colSpan={5} className="px-4 py-12 text-center text-sm text-muted-foreground">
                         No se encontraron clientes con ese criterio.
                       </td>
                     </tr>
@@ -135,9 +134,6 @@ export default function EmpleadoClientesPage() {
                       <tr key={cliente.id} className="transition-colors hover:bg-secondary/30">
                         <td className="px-4 py-4 font-medium text-foreground">
                           {cliente.nombre}
-                        </td>
-                        <td className="px-4 py-4 text-muted-foreground font-mono text-xs">
-                          {cliente.codigo || '—'}
                         </td>
                         <td className="px-4 py-4 text-muted-foreground">
                           {cliente.email || '—'}

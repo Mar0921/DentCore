@@ -4,6 +4,7 @@ export interface Trabajo {
   estado: 'en_laboratorio' | 'en_proceso' | 'listo' | 'entregado' | 'retrasado'
   caja: string
   cliente: string
+  productos?: string | null
   clienteCodigo: string
   doctor: string
   paciente: string

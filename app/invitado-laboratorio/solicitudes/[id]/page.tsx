@@ -201,6 +201,32 @@ function nombreArchivoAdjunto(archivo: string) {
   return parts[0]?.trim() || archivo
 }
 
+// Normaliza para comparar nombres: sin tildes, sin espacios extra, minúsculas
+function normalize(value?: string | null) {
+  return (value || '')
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .trim()
+    .toLowerCase()
+}
+
+// "DISILICATOS x3 (11,12,13) a $200000.00; METAL x1 (34) a $150000.00" -> ['DISILICATOS', 'METAL']
+function nombresProductos(productos?: string | null): string[] {
+  const nombres: string[] = []
+  for (const raw of (productos || '').split(';').map((p) => p.trim()).filter(Boolean)) {
+    const m = raw.match(/^(.*?)\s+x(\d+)\s*\(([^)]*)\)/i)
+    const nombre = (m ? m[1] : raw).trim()
+    if (!nombres.some((n) => normalize(n) === normalize(nombre))) nombres.push(nombre)
+  }
+  return nombres
+}
+
+interface AvanceDatos {
+  total: number
+  completadas: number
+  hechas: { faseId: string | null; fecha: string | null }[]
+}
+
 export default function InvitadoSolicitudDetallePage() {
   const router = useRouter()
   const params = useParams<{ id: string }>()
@@ -211,6 +237,7 @@ export default function InvitadoSolicitudDetallePage() {
   const [loading, setLoading] = useState(true)
   const [selectedTeethState, setSelectedTeethState] = useState<number[]>([])
   const [selectedFaseId, setSelectedFaseId] = useState<string | null>(null)
+  const [avanceDatos, setAvanceDatos] = useState<AvanceDatos | null>(null)
 
   const [posForm, setPosForm] = useState({
     email: '',
@@ -312,6 +339,81 @@ export default function InvitadoSolicitudDetallePage() {
       }
     }
     loadFases()
+  }, [solicitud])
+
+  // Avance real de la solicitud: fases completadas / fases de sus productos (igual que en Trabajos y Solicitudes)
+  useEffect(() => {
+    if (!solicitud) return
+    const sol = solicitud
+    let cancelled = false
+
+    async function loadAvance() {
+      try {
+        // Consultas base (columnas mínimas: de ellas depende el progreso)
+        const [prod, rel, sf] = await Promise.all([
+          supabase.from('productos').select('id, titulo, nombre'),
+          supabase.from('producto_fases').select('id, producto_id'),
+          supabase.from('solicitud_fases').select('producto_fase_id, estado').eq('solicitud_id', sol.id),
+        ])
+        const baseError = prod.error || rel.error || sf.error
+        if (baseError) throw baseError
+
+        // Consultas extra (solo para la fase actual): si fallan, el progreso igual se calcula
+        const [relFase, sfFechas] = await Promise.all([
+          supabase.from('producto_fases').select('id, fase_id'),
+          supabase.from('solicitud_fases').select('producto_fase_id, fecha_finalizacion').eq('solicitud_id', sol.id),
+        ])
+        if (relFase.error) console.warn('producto_fases.fase_id:', relFase.error.message)
+        if (sfFechas.error) console.warn('solicitud_fases fechas:', sfFechas.error.message)
+        if (cancelled) return
+
+        const catalogo = (prod.data as any[]) || []
+        const productoFases = (rel.data as any[]) || []
+        const nombres = nombresProductos(sol.productos).map(normalize)
+
+        const productoIds = nombres
+          .map((n) => catalogo.find((p) => n !== '' && (normalize(p.titulo) === n || normalize(p.nombre) === n)))
+          .filter((p): p is NonNullable<typeof p> => !!p)
+          .map((p) => p.id)
+        const pfIds = new Set<string>(
+          productoFases.filter((pf) => productoIds.includes(pf.producto_id)).map((pf) => pf.id),
+        )
+
+        const faseIdPorPF = new Map<string, string | null>(
+          ((relFase.data as any[]) || []).map((r) => [r.id, r.fase_id ?? null]),
+        )
+        const fechaPorPF = new Map<string, string | null>()
+        ;((sfFechas.data as any[]) || []).forEach((r) => {
+          const prev = fechaPorPF.get(r.producto_fase_id)
+          if (r.fecha_finalizacion && (!prev || r.fecha_finalizacion > prev)) {
+            fechaPorPF.set(r.producto_fase_id, r.fecha_finalizacion)
+          }
+        })
+
+        const completadasPF = new Set<string>()
+        ;((sf.data as any[]) || []).forEach((f) => {
+          if (['completada', 'completado'].includes(normalize(f.estado)) && pfIds.has(f.producto_fase_id)) {
+            completadasPF.add(f.producto_fase_id)
+          }
+        })
+
+        setAvanceDatos({
+          total: pfIds.size,
+          completadas: completadasPF.size,
+          hechas: Array.from(completadasPF).map((pfId) => ({
+            faseId: faseIdPorPF.get(pfId) ?? null,
+            fecha: fechaPorPF.get(pfId) ?? null,
+          })),
+        })
+      } catch (e) {
+        console.error('Error cargando el avance de la solicitud:', e)
+      }
+    }
+
+    loadAvance()
+    return () => {
+      cancelled = true
+    }
   }, [solicitud])
 
   // Datos del laboratorio (para el encabezado de la preescripción)
@@ -432,16 +534,34 @@ export default function InvitadoSolicitudDetallePage() {
 
   const estadoOpt = ESTADO_OPTIONS.find((e) => e.value === solicitud?.estado)
   const prioridadOpt = PRIORIDAD_OPTIONS.find((p) => p.value === solicitud?.prioridad)
-  const faseSeleccionada = fases.find((f) => f.id === (selectedFaseId ?? solicitud?.fase_id))
+  // Progreso real y última fase finalizada (fecha de finalización más reciente; desempata el orden de fase)
+  const avanceCalc = useMemo(() => {
+    if (!avanceDatos || avanceDatos.total === 0) return null
+    const ordenDe = (fid: string | null) => fases.find((f) => f.id === fid)?.orden ?? -1
+    const ultima = [...avanceDatos.hechas].sort((a, b) => {
+      const d = (b.fecha ? new Date(b.fecha).getTime() : 0) - (a.fecha ? new Date(a.fecha).getTime() : 0)
+      if (d !== 0) return d
+      return ordenDe(b.faseId) - ordenDe(a.faseId)
+    })[0]
+    return {
+      progreso: Math.round((avanceDatos.completadas / avanceDatos.total) * 100),
+      faseId: ultima?.faseId ?? null,
+    }
+  }, [avanceDatos, fases])
+
+  const faseSeleccionada = fases.find(
+    (f) => f.id === (avanceCalc?.faseId ?? selectedFaseId ?? solicitud?.fase_id),
+  )
   const progresoDerivado = useMemo(() => {
     if (!solicitud) return 0
+    if (avanceCalc) return avanceCalc.progreso
     const fase = fases.find((f) => f.id === (selectedFaseId ?? solicitud.fase_id))
     if (fase && fases.length > 0) {
       const idx = fases.indexOf(fase)
       return Math.round(((idx + 1) / fases.length) * 100)
     }
     return solicitud.progreso ?? 0
-  }, [solicitud, fases, selectedFaseId])
+  }, [solicitud, fases, selectedFaseId, avanceCalc])
 
   const handlePosSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -623,7 +743,7 @@ export default function InvitadoSolicitudDetallePage() {
             <InfoRow label="Prioridad" value={prioridadOpt?.label || solicitud.prioridad || '—'} />
             <InfoRow label="Fase actual" value={faseTexto} />
             <InfoRow label="Progreso" value={`${progresoDerivado}%`} />
-            <InfoRow label="Asignado a" value={solicitud.asignado_a || '—'} />
+
             <InfoRow label="Odontólogo / Clínica" value={solicitud.odontologonombre || '—'} />
             <InfoRow label="Correo" value={solicitud.odontologo_email || '—'} />
             <InfoRow label="Teléfono" value={solicitud.odontologo_telefono || '—'} />
@@ -1023,7 +1143,7 @@ export default function InvitadoSolicitudDetallePage() {
                 <PrintField label="Prioridad" value={prioridadOpt?.label || solicitud.prioridad} />
                 <PrintField label="Fase actual" value={faseTexto === '—' ? '' : faseTexto} />
                 <PrintField label="Progreso (%)" value={`${progresoDerivado}%`} />
-                <PrintField label="Asignado a" value={solicitud.asignado_a} />
+
                 <PrintField label="Odontólogo / Clínica" value={solicitud.odontologonombre} />
                 <PrintField label="Correo" value={solicitud.odontologo_email} />
                 <PrintField label="Teléfono" value={solicitud.odontologo_telefono} />

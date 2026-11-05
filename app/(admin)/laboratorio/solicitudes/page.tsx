@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { Plus, Search, Eye, FileText } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -18,6 +18,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { requests as mockRequests } from '@/data/lab-mock'
+import { supabase } from '@/lib/supabase'
 import { exportPageToPDF, getPageTitle } from '@/lib/pdf-export'
 
 interface SolicitudFromDB {
@@ -27,10 +28,11 @@ interface SolicitudFromDB {
   estado: string | null
   prioridad: string | null
   progreso: number | null
-  asignado_a: string | null
   created_at: string
   updated_at: string
   notas: string | null
+  fase_id: string | null
+  productos?: string | null
 }
 
 interface RequestItem {
@@ -43,10 +45,18 @@ interface RequestItem {
   status: string
   priority: string
   progress: number
-  assignedTo?: string
+  productos?: string | null
+  faseId?: string | null
   createdAt: string
   updatedAt: string
   notes?: string
+}
+
+// Avance de una solicitud: fases completadas / total de fases de sus productos
+interface AvanceSolicitud {
+  total: number
+  completadas: number
+  progreso: number // 0-100
 }
 
 const statusConfig: Record<string, { label: string; color: string }> = {
@@ -64,6 +74,27 @@ const priorityConfig: Record<string, { label: string; color: string }> = {
   urgent: { label: 'Urgente', color: 'bg-destructive/10 text-destructive' },
 }
 
+// Normaliza para comparar nombres: sin tildes, sin espacios extra, minúsculas
+function normalize(value?: string | null) {
+  return (value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase()
+}
+
+// "DISILICATOS x3 (11,12,13) a $200000.00; METAL x1 (34) a $150000.00" -> ['DISILICATOS', 'METAL']
+// Si un producto se repite se cuenta una sola vez (igual que en la orden de fabricación).
+function nombresProductos(productos?: string | null): string[] {
+  const nombres: string[] = []
+  for (const raw of (productos || '').split(';').map((p) => p.trim()).filter(Boolean)) {
+    const m = raw.match(/^(.*?)\s+x(\d+)\s*\(([^)]*)\)/i)
+    const nombre = (m ? m[1] : raw).trim()
+    if (!nombres.some((n) => normalize(n) === normalize(nombre))) nombres.push(nombre)
+  }
+  return nombres
+}
+
 function mapSolicitudToRequest(s: SolicitudFromDB): RequestItem {
   return {
     id: s.id,
@@ -75,7 +106,8 @@ function mapSolicitudToRequest(s: SolicitudFromDB): RequestItem {
     status: s.estado || 'pending',
     priority: s.prioridad || 'medium',
     progress: s.progreso || 0,
-    assignedTo: s.asignado_a || undefined,
+    productos: s.productos ?? null,
+    faseId: (s as any).fase_id || null,
     createdAt: s.created_at,
     updatedAt: s.updated_at,
     notes: s.notas || undefined,
@@ -88,6 +120,12 @@ export default function SolicitudesPage() {
   const [statusFilter, setStatusFilter] = useState<string>('all')
   const [requests, setRequests] = useState<RequestItem[]>([])
   const [loading, setLoading] = useState(true)
+
+  // Datos para calcular el progreso (mismas tablas que usa la orden de fabricación)
+  const [catalogoProductos, setCatalogoProductos] = useState<{ id: string; titulo: string | null; nombre: string | null }[]>([])
+  const [productoFases, setProductoFases] = useState<{ id: string; producto_id: string }[]>([])
+  const [avanceFilas, setAvanceFilas] = useState<{ solicitud_id: string; producto_fase_id: string; estado: string | null }[]>([])
+  const [avanceListo, setAvanceListo] = useState(false)
 
   useEffect(() => {
     const fetchSolicitudes = async () => {
@@ -112,7 +150,76 @@ export default function SolicitudesPage() {
       }
     }
     fetchSolicitudes()
+
+    let cancelled = false
+    async function fetchAvance() {
+      try {
+        const [prod, rel, av] = await Promise.all([
+          supabase.from('productos').select('id, titulo, nombre'),
+          supabase.from('producto_fases').select('id, producto_id'),
+          supabase.from('solicitud_fases').select('solicitud_id, producto_fase_id, estado'),
+        ])
+        const error = prod.error || rel.error || av.error
+        if (error) throw error
+        if (cancelled) return
+        setCatalogoProductos((prod.data as any[]) || [])
+        setProductoFases((rel.data as any[]) || [])
+        setAvanceFilas((av.data as any[]) || [])
+        setAvanceListo(true)
+      } catch (e) {
+        console.error('Error cargando el avance de las solicitudes:', e)
+      }
+    }
+    fetchAvance()
+
+    return () => {
+      cancelled = true
+    }
   }, [])
+
+  // Progreso por solicitud = fases completadas / total de fases de todos sus productos
+  const avancePorSolicitud = useMemo(() => {
+    const resultado: Record<string, AvanceSolicitud> = {}
+    if (!avanceListo) return resultado
+
+    const idsPorProducto = new Map<string, string[]>()
+    for (const r of productoFases) {
+      const lista = idsPorProducto.get(r.producto_id) ?? []
+      lista.push(r.id)
+      idsPorProducto.set(r.producto_id, lista)
+    }
+
+    const completadasPorSolicitud = new Map<string, Set<string>>()
+    for (const f of avanceFilas) {
+      if (f.estado !== 'completado' && f.estado !== 'completada') continue
+      const set = completadasPorSolicitud.get(f.solicitud_id) ?? new Set<string>()
+      set.add(f.producto_fase_id)
+      completadasPorSolicitud.set(f.solicitud_id, set)
+    }
+
+    for (const req of requests) {
+      const idsFases = new Set<string>()
+      for (const nombre of nombresProductos(req.productos)) {
+        const n = normalize(nombre)
+        const prod = catalogoProductos.find(
+          (p) => normalize(p.titulo) === n || (normalize(p.nombre) !== '' && normalize(p.nombre) === n),
+        )
+        if (prod) (idsPorProducto.get(prod.id) ?? []).forEach((id) => idsFases.add(id))
+      }
+
+      const total = idsFases.size
+      const hechas = completadasPorSolicitud.get(req.id)
+      let completadas = 0
+      if (hechas) hechas.forEach((id) => { if (idsFases.has(id)) completadas += 1 })
+
+      resultado[req.id] = {
+        total,
+        completadas,
+        progreso: total > 0 ? Math.round((completadas / total) * 100) : 0,
+      }
+    }
+    return resultado
+  }, [requests, catalogoProductos, productoFases, avanceFilas, avanceListo])
 
   const filtered = requests.filter((r) => {
     if (statusFilter !== 'all' && r.status !== statusFilter) return false
@@ -136,34 +243,37 @@ export default function SolicitudesPage() {
       const res = await fetch(`/api/solicitudes?id=${encodeURIComponent(solicitudId)}`)
       const result = await res.json()
       const solicitud = result?.data
-      
+
       if (!solicitud) {
         alert('No se encontró la solicitud')
         return
       }
 
+      // Progreso calculado con las fases (si ya cargó); si no, el guardado en la solicitud
+      const progreso = avancePorSolicitud[solicitudId]?.progreso ?? solicitud.progreso ?? 0
+
       // Create a temporary page with the full data for printing
-      await generateSolicitudPDF(solicitud, codigoTrazabilidad)
+      await generateSolicitudPDF(solicitud, codigoTrazabilidad, progreso)
     } catch (error) {
       console.error('Error generating PDF:', error)
       alert('Error al generar el PDF')
     }
   }
 
-  const generateSolicitudPDF = async (solicitud: any, codigoTrazabilidad: string) => {
+  const generateSolicitudPDF = async (solicitud: any, codigoTrazabilidad: string, progreso: number) => {
     // Create a printable HTML content with all solicitud data
-    const printContent = createSolicitudPrintHTML(solicitud, codigoTrazabilidad)
-    
+    const printContent = createSolicitudPrintHTML(solicitud, codigoTrazabilidad, progreso)
+
     // Open new window for printing
     const printWindow = window.open('', '_blank')
     if (!printWindow) {
       alert('Permita ventanas emergentes para generar el PDF')
       return
     }
-    
+
     printWindow.document.write(printContent)
     printWindow.document.close()
-    
+
     // Wait for content to load then print
     printWindow.onload = () => {
       setTimeout(() => {
@@ -174,12 +284,12 @@ export default function SolicitudesPage() {
     }
   }
 
-  const createSolicitudPrintHTML = (solicitud: any, codigoTrazabilidad: string) => {
+  const createSolicitudPrintHTML = (solicitud: any, codigoTrazabilidad: string, progreso: number) => {
     const formatDate = (dateStr: string | null) => {
       if (!dateStr) return '—'
       return new Date(dateStr).toLocaleDateString('es-ES')
     }
-    
+
     const formatDateTime = (dateStr: string | null) => {
       if (!dateStr) return '—'
       return new Date(dateStr).toLocaleString('es-ES')
@@ -321,17 +431,13 @@ export default function SolicitudesPage() {
         <span class="field-label">Prioridad</span>
         <span class="field-value">
           <span class="badge badge-prioridad-${solicitud.prioridad || 'media'}">
-            ({({ baja: 'Baja', media: 'Media', alta: 'Alta', urgente: 'Urgente' } as Record<string, string>)[solicitud.prioridad] || solicitud.prioridad || '—'})
+            ${({ baja: 'Baja', media: 'Media', alta: 'Alta', urgente: 'Urgente' } as Record<string, string>)[solicitud.prioridad] || solicitud.prioridad || '—'}
           </span>
         </span>
       </div>
       <div class="field">
         <span class="field-label">Progreso</span>
-        <span class="field-value">${solicitud.progreso || 0}%</span>
-      </div>
-      <div class="field">
-        <span class="field-label">Asignado a</span>
-        <span class="field-value">${solicitud.asignado_a || '—'}</span>
+        <span class="field-value">${progreso}%</span>
       </div>
     </div>
   </div>
@@ -446,7 +552,7 @@ export default function SolicitudesPage() {
   const generateDentalChartSVG = (dientesStr: string) => {
     const dientes = dientesStr.split(/[\s,]+/).map(d => parseInt(d, 10)).filter(n => !isNaN(n) && n >= 1 && n <= 48)
     if (dientes.length === 0) return '<p class="text-muted-foreground">Sin dientes registrados</p>'
-    
+
     // Generate a simple SVG dental chart
     const toothPositions = {
       1: [50, 50], 2: [100, 50], 3: [150, 50], 4: [200, 50], 5: [250, 50], 6: [300, 50], 7: [350, 50], 8: [400, 50],
@@ -460,9 +566,9 @@ export default function SolicitudesPage() {
     const toothSize = 30
     const svgWidth = 450
     const svgHeight = 450
-    
+
     let svg = `<svg width="${svgWidth}" height="${svgHeight}" viewBox="0 0 ${svgWidth} ${svgHeight}" xmlns="http://www.w3.org/2000/svg">`
-    
+
     Object.entries(toothPositions).forEach(([num, [x, y]]) => {
       const toothNum = parseInt(num)
       const isSelected = dientes.includes(toothNum)
@@ -478,7 +584,7 @@ export default function SolicitudesPage() {
           </text>
         </g>`
     })
-    
+
     svg += '</svg>'
     return svg
   }
@@ -563,6 +669,7 @@ export default function SolicitudesPage() {
                   {filtered.map((req) => {
                     const estado = statusConfig[req.status] ?? { label: req.status, color: 'bg-muted text-muted-foreground' }
                     const prioridad = priorityConfig[req.priority] ?? { label: req.priority, color: 'bg-muted text-muted-foreground' }
+                    const avance = avancePorSolicitud[req.id]
                     return (
                       <tr key={req.id} className="transition-colors hover:bg-secondary/30">
                         <td className="px-4 py-4">
@@ -586,12 +693,22 @@ export default function SolicitudesPage() {
                           </span>
                         </td>
                         <td className="px-4 py-4">
-                          <div className="flex items-center gap-2">
-                            <div className="h-1.5 w-24 rounded-full bg-secondary">
-                              <div className="h-1.5 rounded-full bg-primary" style={{ width: `${req.progress}%` }} />
+                          {avance ? (
+                            <div
+                              className="flex items-center gap-2"
+                              title={`${avance.completadas} de ${avance.total} fases completadas`}
+                            >
+                              <div className="h-1.5 w-24 rounded-full bg-secondary">
+                                <div
+                                  className="h-1.5 rounded-full bg-primary"
+                                  style={{ width: `${avance.progreso}%` }}
+                                />
+                              </div>
+                              <span className="text-xs text-muted-foreground">{avance.progreso}%</span>
                             </div>
-                            <span className="text-xs text-muted-foreground">{req.progress}%</span>
-                          </div>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">—</span>
+                          )}
                         </td>
                         <td className="px-4 py-4 text-right">
                           <Button variant="ghost" size="sm" className="gap-2" onClick={() => router.push(`/laboratorio/solicitudes/${req.id}`)}>

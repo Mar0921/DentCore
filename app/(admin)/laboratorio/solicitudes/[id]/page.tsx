@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/componen
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { DentalChart } from '@/components/dentcore/solicitud/dental-chart'
-import { OrdenFabricacion } from '@/components/dentcore/solicitud/orden-fabricacion'
+import { OrdenFabricacion, type AvanceOrden } from '@/components/dentcore/solicitud/orden-fabricacion'
 import { FichaTecnicaColadoUcla } from '@/components/dentcore/fichas-tecnicas/ficha-tecnica-colado-ucla'
 import { FichaTecnicaCeramicaEncia } from '@/components/dentcore/fichas-tecnicas/ficha-tecnica-ceramica-encia'
 import { FichaTecnicaGenerica } from '@/components/dentcore/fichas-tecnicas/ficha-tecnica-generica'
@@ -76,12 +76,6 @@ function imprimirElemento(el: HTMLElement | null, titulo: string) {
 type Estado = 'pendiente' | 'en_progreso' | 'completada' | 'entregada' | 'cancelada'
 type Prioridad = 'baja' | 'media' | 'alta' | 'urgente'
 
-interface FaseLite {
-  id: string
-  nombre: string
-  orden: number
-}
-
 interface CampoFicha {
   label: string
   value: string
@@ -119,7 +113,6 @@ interface SolicitudEditable {
   estado: string | null
   prioridad: string | null
   progreso: number | null
-  asignado_a: string | null
   notas: string | null
   odontologonombre: string | null
   odontologo_email: string | null
@@ -195,7 +188,8 @@ export default function SolicitudDetallePage() {
   const id = params?.id
 
   const [solicitud, setSolicitud] = useState<SolicitudEditable | null>(null)
-  const [fases, setFases] = useState<FaseLite[]>([])
+  // Avance calculado por la orden de fabricación (fases completadas / total de fases)
+  const [avance, setAvance] = useState<AvanceOrden | null>(null)
   const [form, setForm] = useState<Partial<SolicitudEditable>>({})
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -238,35 +232,6 @@ export default function SolicitudDetallePage() {
     }
     fetchSolicitud()
   }, [id])
-
-  useEffect(() => {
-    if (!solicitud) return
-
-    async function loadFases() {
-      try {
-        let { data, error } = await supabase
-          .from('fases')
-          .select('id, nombre, orden')
-          .order('orden', { ascending: true })
-
-        if ((!data || data.length === 0) && solicitud!.laboratorio_id) {
-          const retry = await supabase
-            .from('fases')
-            .select('id, nombre, orden')
-            .eq('laboratorio_id', solicitud!.laboratorio_id)
-            .order('orden', { ascending: true })
-          ;({ data, error } = retry)
-        }
-
-        if (!error && data && data.length > 0) {
-          setFases(data as FaseLite[])
-        }
-      } catch {
-        // ignore
-      }
-    }
-    loadFases()
-  }, [solicitud])
 
   // Datos del laboratorio (para el encabezado de la preescripción)
   // SUPOSICIÓN: tabla "laboratorios" con columnas nombre, nit, direccion, ciudad, telefono, correo/email.
@@ -452,29 +417,18 @@ export default function SolicitudDetallePage() {
   }
 
   function mapForm(s: SolicitudEditable) {
+    const estadoValido = ESTADO_OPTIONS.find((o) => o.value === s.estado)
     return {
       tipo: s.tipo ?? '',
-      estado: (s.estado as Estado) || 'pendiente',
+      estado: estadoValido ? estadoValido.value : 'pendiente',
       prioridad: (s.prioridad as Prioridad) || 'media',
-      progreso: s.progreso ?? 0,
-      asignado_a: s.asignado_a ?? '',
       notas: s.notas ?? '',
       paciente: s.paciente ?? '',
       cc_paciente: s.cc_paciente ?? '',
       fecha_entrega: s.fecha_entrega ?? '',
       firma_odontologo: s.firma_odontologo ?? '',
-      fase_id: s.fase_id ?? null,
     }
   }
-
-  const progresoDerivado = useMemo(() => {
-    const fase = fases.find((f) => f.id === form.fase_id)
-    if (fase && fases.length > 0) {
-      const maxOrden = Math.max(...fases.map((f) => f.orden))
-      return Math.round((fase.orden / maxOrden) * 100)
-    }
-    return Number(form.progreso ?? solicitud?.progreso ?? 0)
-  }, [form.fase_id, form.progreso, fases, solicitud?.progreso])
 
   const selectedTeeth = useMemo(() => parseDientes(solicitud?.dientes), [solicitud?.dientes])
 
@@ -514,8 +468,16 @@ export default function SolicitudDetallePage() {
     setForm((prev) => ({ ...prev, [field]: value }))
   }
 
-  const handleFaseChange = (faseId: string) => {
-    setField('fase_id', faseId || null)
+  // Descarta los cambios sin guardar y vuelve a los datos guardados
+  function cancelarEdicion() {
+    if (solicitud) setForm(mapForm(solicitud))
+    syncTeethFromSolicitud()
+    setIsEditing(false)
+  }
+
+  function toggleEdicion() {
+    if (isEditing) cancelarEdicion()
+    else setIsEditing(true)
   }
 
   const handleSave = async () => {
@@ -529,14 +491,14 @@ export default function SolicitudDetallePage() {
           id: solicitud.id,
           ...form,
           dientes: selectedTeethState.join(', ') || null,
-          progreso: progresoDerivado,
+          progreso: avance?.progreso ?? solicitud.progreso ?? 0,
         }),
       })
       const result = await res.json()
       if (!res.ok) throw new Error(result.error || 'Error al guardar')
       const updated = result.data
       setSolicitud(updated)
-      setForm((prev) => ({ ...prev, ...mapForm(updated), progreso: updated.progreso ?? prev.progreso }))
+      setForm((prev) => ({ ...prev, ...mapForm(updated) }))
       setIsEditing(false)
     } catch (e) {
       alert('Error al guardar: ' + (e as any).message)
@@ -577,7 +539,6 @@ export default function SolicitudDetallePage() {
 
   const estadoOpt = ESTADO_OPTIONS.find((e) => e.value === form.estado)
   const prioridadOpt = PRIORIDAD_OPTIONS.find((p) => p.value === form.prioridad)
-  const faseSeleccionada = fases.find((f) => f.id === form.fase_id)
 
   // Datos para el visor de fichas (solo lectura)
   const codigoRaw = solicitud.codigo_trazabilidad || ''
@@ -593,9 +554,11 @@ export default function SolicitudDetallePage() {
   const handleExportOrden = () =>
     imprimirElemento(ordenRef.current, `Orden-de-fabricacion-${codigoArchivo}`)
 
-  const faseTexto = faseSeleccionada
-    ? `${faseSeleccionada.orden}. ${faseSeleccionada.nombre}`
-    : ((solicitud as any).fase_id || (solicitud as any).faseActual || (solicitud as any).fase_actual || '—')
+  // Última fase guardada y progreso (calculados desde las fases de la orden de fabricación)
+  const faseTexto = avance?.ultimaFase || '—'
+  const progresoTexto = avance
+    ? `${avance.progreso}% (${avance.completadas} de ${avance.total} fases)`
+    : '—'
 
   return (
     <div className="space-y-4">
@@ -608,7 +571,7 @@ export default function SolicitudDetallePage() {
           prioridad: prioridadOpt?.label || form.prioridad || '',
         }}
         isEditing={isEditing}
-        onToggleEdit={() => setIsEditing((prev) => !prev)}
+        onToggleEdit={toggleEdicion}
         onExportPreescripcion={handleExportPreescripcion}
         onExportOrden={handleExportOrden}
       />
@@ -618,7 +581,7 @@ export default function SolicitudDetallePage() {
           <CardTitle className="text-base">{isEditing ? 'Edición' : 'Detalle de solicitud'}</CardTitle>
           <p className="mt-1 text-xs text-muted-foreground">
             {isEditing
-              ? 'Modifique los campos y guarde los cambios. El progreso se calcula según la fase del proceso.'
+              ? 'Modifique los campos y guarde los cambios. El progreso se calcula con las fases completadas de la orden de fabricación.'
               : 'Información registrada de la solicitud. Presione "Editar" para realizar cambios.'}
           </p>
         </CardHeader>
@@ -682,32 +645,12 @@ export default function SolicitudDetallePage() {
                 </select>
               </div>
               <div className="grid gap-1.5">
-                <label className="text-sm font-medium text-primary">Fase actual</label>
-                <select
-                  value={form.fase_id ?? ''}
-                  onChange={(e) => handleFaseChange(e.target.value)}
-                  className={SELECT_CLASS}
-                  disabled={fases.length === 0}
-                >
-                  <option value="">Seleccionar fase…</option>
-                  {fases.map((f) => (
-                    <option key={f.id} value={f.id}>
-                      {f.orden}. {f.nombre}
-                    </option>
-                  ))}
-                </select>
+                <label className="text-sm font-medium text-primary">Última fase guardada</label>
+                <Input value={faseTexto} disabled />
               </div>
               <div className="grid gap-1.5">
                 <label className="text-sm font-medium text-primary">Progreso (%)</label>
-                <Input type="number" min={0} max={100} value={progresoDerivado} disabled />
-              </div>
-              <div className="grid gap-1.5">
-                <label className="text-sm font-medium text-primary">Asignado a</label>
-                <Input
-                  value={form.asignado_a ?? ''}
-                  onChange={(e) => setField('asignado_a', e.target.value)}
-                  placeholder="Nombre del técnico"
-                />
+                <Input value={progresoTexto} disabled />
               </div>
               <div className="grid gap-1.5">
                 <label className="text-sm font-medium text-primary">Odontólogo / Clínica</label>
@@ -810,16 +753,12 @@ export default function SolicitudDetallePage() {
                 <span className="text-sm text-foreground">{prioridadOpt?.label || solicitud.prioridad || '—'}</span>
               </div>
               <div className="grid gap-1.5">
-                <span className="text-xs text-muted-foreground">Fase actual</span>
+                <span className="text-xs text-muted-foreground">Última fase guardada</span>
                 <span className="text-sm text-foreground">{faseTexto}</span>
               </div>
               <div className="grid gap-1.5">
                 <span className="text-xs text-muted-foreground">Progreso (%)</span>
-                <span className="text-sm text-foreground">{progresoDerivado}%</span>
-              </div>
-              <div className="grid gap-1.5">
-                <span className="text-xs text-muted-foreground">Asignado a</span>
-                <span className="text-sm text-foreground">{solicitud.asignado_a || '—'}</span>
+                <span className="text-sm text-foreground">{progresoTexto}</span>
               </div>
               <div className="grid gap-1.5">
                 <span className="text-xs text-muted-foreground">Odontólogo / Clínica</span>
@@ -906,7 +845,7 @@ export default function SolicitudDetallePage() {
           )}
         </CardContent>
         <CardFooter className="flex justify-end gap-2 border-t border-border">
-          <Button variant="outline" onClick={() => isEditing ? setIsEditing(false) : router.back()}>Cancelar</Button>
+          <Button variant="outline" onClick={() => (isEditing ? cancelarEdicion() : router.back())}>Cancelar</Button>
           {isEditing ? (
             <Button className="gap-2" onClick={handleSave} disabled={saving}>
               {saving ? (
@@ -1162,7 +1101,7 @@ export default function SolicitudDetallePage() {
           </Button>
         </div>
         <div ref={ordenRef}>
-          <OrdenFabricacion solicitud={solicitud} />
+          <OrdenFabricacion solicitud={solicitud} onAvanceChange={setAvance} />
         </div>
       </div>
 
@@ -1222,9 +1161,8 @@ export default function SolicitudDetallePage() {
               <PrintField label="Tipo de trabajo" value={solicitud.tipo} />
               <PrintField label="Estado" value={estadoOpt?.label || solicitud.estado} />
               <PrintField label="Prioridad" value={prioridadOpt?.label || solicitud.prioridad} />
-              <PrintField label="Fase actual" value={faseTexto === '—' ? '' : faseTexto} />
-              <PrintField label="Progreso (%)" value={`${progresoDerivado}%`} />
-              <PrintField label="Asignado a" value={solicitud.asignado_a} />
+              <PrintField label="Última fase guardada" value={faseTexto === '—' ? '' : faseTexto} />
+              <PrintField label="Progreso (%)" value={progresoTexto === '—' ? '' : progresoTexto} />
               <PrintField label="Odontólogo / Clínica" value={solicitud.odontologonombre} />
               <PrintField label="Correo" value={solicitud.odontologo_email} />
               <PrintField label="Teléfono" value={solicitud.odontologo_telefono} />
