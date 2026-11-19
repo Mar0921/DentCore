@@ -73,6 +73,7 @@ export default function NuevaIncidenciaEmpleadoPage() {
 
   const [solicitudes, setSolicitudes] = useState<Solicitud[]>([])
   const [fasesDisponibles, setFasesDisponibles] = useState<FaseLite[]>([])
+  const [tiposIncidencia, setTiposIncidencia] = useState<string[]>([])
   const [loading, setLoading] = useState(false)
   const [cargandoResponsable, setCargandoResponsable] = useState(true)
 
@@ -100,6 +101,13 @@ export default function NuevaIncidenciaEmpleadoPage() {
     }
 
     void cargarFases(formData.solicitud_id)
+  }, [formData.solicitud_id, solicitudes])
+
+  useEffect(() => {
+    const sol = solicitudes.find((s) => String(s.id) === formData.solicitud_id)
+    const labId = sol?.laboratorio_id
+    const url = labId ? `/api/tipos-incidencia?laboratorio_id=${labId}` : '/api/tipos-incidencia'
+    fetch(url).then((r) => r.json()).then((j) => setTiposIncidencia((j.data || []).map((t: any) => t.nombre))).catch(() => setTiposIncidencia([]))
   }, [formData.solicitud_id, solicitudes])
 
   // Obtiene el nombre del usuario que inició sesión (desde localStorage).
@@ -463,7 +471,7 @@ export default function NuevaIncidenciaEmpleadoPage() {
                   >
                     <option value="">Seleccionar tipo</option>
 
-                    {TIPOS_INCIDENCIA.map((tipo) => (
+                    {tiposIncidencia.map((tipo) => (
                       <option key={tipo} value={tipo}>
                         {tipo}
                       </option>

@@ -4,13 +4,14 @@ import { Fragment, useState, useEffect, useMemo, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { DentalChart } from '@/components/dentcore/solicitud/dental-chart'
 import { FasesFabricacion } from '@/components/dentcore/laboratorio/fases-fabricacion'
 import { FichaTecnicaColadoUcla } from '@/components/dentcore/fichas-tecnicas/ficha-tecnica-colado-ucla'
 import { FichaTecnicaCeramicaEncia } from '@/components/dentcore/fichas-tecnicas/ficha-tecnica-ceramica-encia'
 import { FichaTecnicaGenerica } from '@/components/dentcore/fichas-tecnicas/ficha-tecnica-generica'
-import { ChevronLeft, RefreshCw, Save, X, Eye, FileText } from 'lucide-react'
+import { ChevronLeft, RefreshCw, Save, X, Eye, FileText, Image, Upload } from 'lucide-react'
 import { AppShell } from '@/components/dentcore/app-shell'
 import type { ToothStatus } from '@/components/dentcore/solicitud/solicitud-types'
 
@@ -109,6 +110,13 @@ interface LaboratorioInfo {
   correo: string
 }
 
+interface ProductoFaseRow {
+  id: string
+  producto_id: string
+  fase_id: string
+  orden: number | null
+}
+
 interface SolicitudLite {
   id: string
   tipo: string | null
@@ -148,12 +156,29 @@ const ESTADO_OPTIONS = [
   { value: 'cancelada', label: 'Cancelada' },
 ] as const
 
+// Estados válidos para una FASE de fabricación (en la BD se guarda "completado")
+const ESTADO_FASE_OPTIONS = [
+  { value: 'pendiente', label: 'Pendiente' },
+  { value: 'en_progreso', label: 'En progreso' },
+  { value: 'completado', label: 'Completado' },
+] as const
+
 const PRIORIDAD_OPTIONS = [
   { value: 'baja', label: 'Baja' },
   { value: 'media', label: 'Media' },
   { value: 'alta', label: 'Alta' },
   { value: 'urgente', label: 'Urgente' },
 ] as const
+
+/** Normaliza el estado de una fase tal como viene de la BD ("completada" -> "completado"). */
+function normalizeEstadoFase(value?: string | null): string {
+  const s = (value || 'pendiente').toString().toLowerCase().trim()
+  return s === 'completada' ? 'completado' : s
+}
+
+function isFaseCompletada(value?: string | null): boolean {
+  return normalizeEstadoFase(value) === 'completado'
+}
 
 function parseDientes(dientes?: string | null): number[] {
   if (!dientes) return []
@@ -211,15 +236,132 @@ export default function EmpleadoSolicitudDetallePage() {
   const [guardandoMaterial, setGuardandoMaterial] = useState(false)
   const [eliminandoMaterialId, setEliminandoMaterialId] = useState<string | null>(null)
   const [fichas, setFichas] = useState<FichaRegistro[]>([])
+  // Filas que ya existen en solicitud_fases para esta solicitud
   const [solicitudFases, setSolicitudFases] = useState<any[]>([])
-  const [totalFasesCount, setTotalFasesCount] = useState(0)
+  // producto_fase_id -> fase_id (para las filas existentes)
+  const [productoFaseMap, setProductoFaseMap] = useState<Map<string, string>>(new Map())
+  // producto_fase_id -> { producto_id, fase_id } (para las filas existentes)
+  const [pfInfo, setPfInfo] = useState<Map<string, { producto_id: string; fase_id: string }>>(new Map())
+  // TODAS las fases definidas en producto_fases para los productos de esta solicitud
+  const [catalogoFases, setCatalogoFases] = useState<ProductoFaseRow[]>([])
+  // producto_id -> título
+  const [productoTituloMap, setProductoTituloMap] = useState<Map<string, string>>(new Map())
   const [incidencias, setIncidencias] = useState<any[]>([])
   const [medidasPorInc, setMedidasPorInc] = useState<Record<string, any[]>>({})
   const [fichaVista, setFichaVista] = useState<FichaRegistro | null>(null)
   const [laboratorio, setLaboratorio] = useState<LaboratorioInfo | null>(null)
+  const [empleadoActual, setEmpleadoActual] = useState<string>('')
 
   // Ref para exportar la preescripción a PDF
   const preescripcionRef = useRef<HTMLDivElement>(null)
+
+  // Estados para subir evidencia de fase (solo cuando se marca como COMPLETADO)
+  const [openEvidenceDialog, setOpenEvidenceDialog] = useState(false)
+  const [faseParaEvidencia, setFaseParaEvidencia] = useState<any | null>(null)
+  const [evidenciaFile, setEvidenciaFile] = useState<File | null>(null)
+  const [subiendoEvidencia, setSubiendoEvidencia] = useState(false)
+  const [savingFaseFilaId, setSavingFaseFilaId] = useState<string | null>(null)
+  const [cameraOpen, setCameraOpen] = useState(false)
+  const videoRef = useRef<HTMLVideoElement>(null)
+  const streamRef = useRef<MediaStream | null>(null)
+  // Solo se editan el estado y la fecha de finalización. La fecha de prueba NUNCA es editable.
+  const [faseEdits, setFaseEdits] = useState<Record<string, { estado: string; fechaFinalizacion: string }>>({})
+
+  // Filas que se muestran en la tabla: TODAS las fases de producto_fases,
+  // combinadas con lo que ya exista en solicitud_fases (si no existe, se muestra "pendiente").
+  const filasFases = useMemo(() => {
+    const rows: any[] = []
+    const usados = new Set<string>()
+    const tituloDe = (pid?: string | null) => (pid && productoTituloMap.get(pid)) || 'Producto'
+
+    const construir = (
+      pfId: string | null,
+      sfRow: any | null,
+      productoId: string | null | undefined,
+      faseIdCatalogo: string | null | undefined,
+      ordenCatalogo: number | null | undefined,
+    ) => {
+      const faseId = sfRow?.fase_id || faseIdCatalogo || null
+      const faseInfo = fases.find((f) => f.id === faseId)
+      const base = sfRow || {
+        id: `virtual-${pfId}`,
+        solicitud_id: solicitud?.id,
+        estado: 'pendiente',
+        fecha_finalizacion: null,
+        fecha_prueba: null,
+        realizado_por: null,
+      }
+      return {
+        ...base,
+        producto_fase_id: pfId,
+        virtual: !sfRow,
+        faseId,
+        nombreFase: faseInfo?.nombre || 'Fase',
+        orden: ordenCatalogo ?? faseInfo?.orden ?? 999,
+        nombreProducto: tituloDe(productoId),
+      }
+    }
+
+    catalogoFases.forEach((pf) => {
+      const sf = solicitudFases.find((x: any) => x.producto_fase_id === pf.id) || null
+      usados.add(pf.id)
+      rows.push(construir(pf.id, sf, pf.producto_id, pf.fase_id, pf.orden))
+    })
+
+    // Filas de solicitud_fases cuyo producto_fase no apareció en el catálogo
+    solicitudFases.forEach((sf: any) => {
+      if (sf.producto_fase_id && usados.has(sf.producto_fase_id)) return
+      const info = pfInfo.get(sf.producto_fase_id)
+      rows.push(construir(sf.producto_fase_id ?? null, sf, info?.producto_id, info?.fase_id, null))
+    })
+
+    return rows
+  }, [catalogoFases, solicitudFases, pfInfo, fases, productoTituloMap, solicitud?.id])
+
+  // Inicializa las ediciones con lo que hay en la BD
+  useEffect(() => {
+    const next: Record<string, { estado: string; fechaFinalizacion: string }> = {}
+    filasFases.forEach((f: any) => {
+      next[f.id] = {
+        estado: normalizeEstadoFase(f.estado),
+        fechaFinalizacion: f.fecha_finalizacion || '',
+      }
+    })
+    setFaseEdits(next)
+  }, [filasFases])
+
+  // Cámara para "Tomar foto"
+  useEffect(() => {
+    if (!cameraOpen) {
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((t) => t.stop())
+        streamRef.current = null
+      }
+      return
+    }
+    let cancelled = false
+    ;(async () => {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+        if (cancelled) {
+          stream.getTracks().forEach((t) => t.stop())
+          return
+        }
+        streamRef.current = stream
+        if (videoRef.current) videoRef.current.srcObject = stream
+      } catch {
+        alert('No se pudo acceder a la cámara. Revise los permisos del navegador.')
+        setCameraOpen(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((t) => t.stop())
+        streamRef.current = null
+      }
+    }
+  }, [cameraOpen])
 
   useEffect(() => {
     if (!id) return
@@ -239,72 +381,127 @@ export default function EmpleadoSolicitudDetallePage() {
   }, [id])
 
   useEffect(() => {
-    if (solicitud) {
-      setSelectedFaseId((prev) => prev ?? solicitud.fase_id)
+    if (!solicitud?.laboratorio_id) return
+    let cancelled = false
+    ;(async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser()
+        if (user) {
+          const { data: emp } = await supabase
+            .from('empleados')
+            .select('nombre')
+            .eq('email', user.email || '')
+            .eq('laboratorio_id', solicitud.laboratorio_id)
+            .maybeSingle()
+          if (emp && !cancelled) setEmpleadoActual((emp as any).nombre || '')
+        }
+      } catch (e) {
+        console.error('Error cargando empleado actual:', e)
+      }
+    })()
+    return () => {
+      cancelled = true
     }
-  }, [solicitud])
+  }, [solicitud?.laboratorio_id])
 
   useEffect(() => {
-    if (!solicitud) return
+    if (solicitud) {
+      loadFases()
+    }
+  }, [solicitud])
 
-    async function loadFases() {
-      try {
-        let { data, error } = await supabase
+  async function loadFases() {
+    if (!solicitud?.id) return
+    try {
+      // 1) Catálogo de fases (nombre/orden)
+      let { data, error } = await supabase
+        .from('fases')
+        .select('id, nombre, orden')
+        .order('orden', { ascending: true })
+
+      if ((!data || data.length === 0) && solicitud?.laboratorio_id) {
+        const retry = await supabase
           .from('fases')
           .select('id, nombre, orden')
+          .eq('laboratorio_id', solicitud.laboratorio_id)
           .order('orden', { ascending: true })
-
-        if ((!data || data.length === 0) && solicitud?.laboratorio_id) {
-          const retry = await supabase
-            .from('fases')
-            .select('id, nombre, orden')
-            .eq('laboratorio_id', solicitud.laboratorio_id)
-            .order('orden', { ascending: true })
-          ;({ data, error } = retry)
-        }
-
-        if ((!data || data.length === 0)) {
-          const retry2 = await supabase
-            .from('fases')
-            .select('id, nombre, orden')
-            .order('orden', { ascending: true })
-          ;({ data, error } = retry2)
-        }
-
-        if (!error && data && data.length > 0) {
-          setFases(data as FaseLite[])
-          const { data: sf } = await supabase
-            .from('solicitud_fases')
-            .select('producto_fase_id, estado, fecha_finalizacion')
-            .eq('solicitud_id', solicitud!.id)
-          setSolicitudFases(sf || [])
-          const ids = (sf || []).map((x: any) => x.producto_fase_id).filter(Boolean)
-          if (ids.length) {
-            const { data: pf } = await supabase
-              .from('producto_fases')
-              .select('id, fase_id')
-              .in('id', ids)
-            const map = new Map((pf || []).map((x: any) => [x.id, x.fase_id]))
-            const latest = (sf || [])
-              .filter((x: any) => x.fecha_finalizacion)
-              .sort((a: any, b: any) => new Date(b.fecha_finalizacion).getTime() - new Date(a.fecha_finalizacion).getTime())[0]
-            const latestFaseId = latest ? map.get(latest.producto_fase_id) : null
-            if (latestFaseId) setSelectedFaseId(latestFaseId)
-            else if (!solicitud?.fase_id) {
-              const current = (sf || []).find((x: any) => x.estado && x.estado !== 'completada') || sf?.[sf.length - 1]
-              const fid = current ? map.get(current.producto_fase_id) : null
-              if (fid) setSelectedFaseId(fid)
-            }
-          } else if (!solicitud?.fase_id) {
-            // no-op
-          }
-        }
-      } catch {
-        // ignore
+        ;({ data, error } = retry)
       }
+
+      if (!error && data && data.length > 0) {
+        setFases(data as FaseLite[])
+      }
+
+      // 2) Filas existentes de solicitud_fases (independiente de lo anterior)
+      const { data: sf, error: sfError } = await supabase
+        .from('solicitud_fases')
+        .select('*')
+        .eq('solicitud_id', solicitud.id)
+        .order('updated_at', { ascending: false })
+      if (sfError) console.error('Error leyendo solicitud_fases:', sfError)
+      setSolicitudFases(sf || [])
+
+      // 3) Info de producto_fases de esas filas
+      const ids = (sf || []).map((x: any) => x.producto_fase_id).filter(Boolean)
+      if (ids.length) {
+        const { data: pf } = await supabase
+          .from('producto_fases')
+          .select('id, producto_id, fase_id')
+          .in('id', ids)
+        const pfRows = pf || []
+        setProductoFaseMap(new Map(pfRows.map((x: any) => [x.id, x.fase_id])))
+        setPfInfo(
+          new Map(pfRows.map((x: any) => [x.id, { producto_id: x.producto_id, fase_id: x.fase_id }])),
+        )
+      } else {
+        setProductoFaseMap(new Map())
+        setPfInfo(new Map())
+      }
+    } catch (e) {
+      console.error('Error en loadFases:', e)
     }
-    loadFases()
-  }, [solicitud])
+  }
+
+  // Carga TODAS las fases de producto_fases para los productos de la solicitud
+  useEffect(() => {
+    if (!solicitud?.id) return
+    let cancelled = false
+    ;(async () => {
+      try {
+        const prodIds = new Set<string>(productoIds)
+        pfInfo.forEach((v) => {
+          if (v.producto_id) prodIds.add(v.producto_id)
+        })
+        if (prodIds.size === 0) {
+          if (!cancelled) setCatalogoFases([])
+          return
+        }
+        const arr = Array.from(prodIds)
+        const { data: pf, error: pfErr } = await supabase
+          .from('producto_fases')
+          .select('id, producto_id, fase_id, orden')
+          .in('producto_id', arr)
+          .order('orden', { ascending: true })
+        if (pfErr) console.error('Error leyendo producto_fases:', pfErr)
+
+        const { data: prods } = await supabase
+          .from('productos')
+          .select('id, titulo, nombre')
+          .in('id', arr)
+
+        if (cancelled) return
+        setCatalogoFases((pf || []) as ProductoFaseRow[])
+        setProductoTituloMap(
+          new Map((prods || []).map((x: any) => [x.id, x.titulo || x.nombre || 'Producto'])),
+        )
+      } catch (e) {
+        console.error('Error cargando catálogo de fases:', e)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [solicitud?.id, productoIds, pfInfo])
 
   // Datos del laboratorio (para el encabezado de la preescripción)
   // SUPOSICIÓN: tabla "laboratorios" con columnas nombre, nit, direccion, ciudad, telefono, correo/email.
@@ -620,39 +817,40 @@ export default function EmpleadoSolicitudDetallePage() {
     }
   }, [solicitud])
 
-  useEffect(() => {
-    if (!productoIds.length) { setTotalFasesCount(0); return }
-    supabase.from('producto_fases').select('id', { count: 'exact', head: true }).in('producto_id', productoIds)
-      .then(({ count }) => setTotalFasesCount(count || 0))
-  }, [productoIds])
-
   const selectedTeeth = useMemo(() => parseDientes(solicitud?.dientes), [solicitud?.dientes])
 
   const estadoOpt = ESTADO_OPTIONS.find((e) => e.value === solicitud?.estado)
   const prioridadOpt = PRIORIDAD_OPTIONS.find((p) => p.value === solicitud?.prioridad)
-  const faseSeleccionada = fases.find((f) => f.id === (selectedFaseId ?? solicitud?.fase_id))
-  const progresoDerivado = useMemo(() => {
-    if (totalFasesCount > 0) {
-      const completadas = solicitudFases.filter((sf: any) => (sf.estado || '').toLowerCase() === 'completado').length
-      return Math.round((completadas / totalFasesCount) * 100)
+  const faseSeleccionada = useMemo(() => {
+    if (isEditingFase && selectedFaseId) {
+      return fases.find((f) => f.id === selectedFaseId)
     }
-    if (solicitudFases.length > 0) {
-      const total = solicitudFases.length
-      const completadas = solicitudFases.filter((sf: any) => (sf.estado || '').toLowerCase() === 'completado').length
-      return Math.round((completadas / total) * 100)
+    const lastRow = solicitudFases[0]
+    if (lastRow) {
+      const fid = lastRow.fase_id || (lastRow.producto_fase_id ? productoFaseMap.get(lastRow.producto_fase_id) || null : null)
+      if (fid) return fases.find((f) => f.id === fid)
+    }
+    return fases.find((f) => f.id === solicitud?.fase_id) ?? fases[fases.length - 1] ?? undefined
+  }, [isEditingFase, selectedFaseId, solicitudFases, productoFaseMap, fases, solicitud?.fase_id])
+
+  const progresoDerivado = useMemo(() => {
+    // Progreso = fases completadas / total de fases definidas en producto_fases
+    if (filasFases.length > 0) {
+      const completadas = filasFases.filter((sf: any) => isFaseCompletada(sf.estado)).length
+      return Math.round((completadas / filasFases.length) * 100)
     }
     if (!solicitud) return 0
-    const fase = fases.find((f) => f.id === (selectedFaseId ?? solicitud.fase_id))
+    const fase = faseSeleccionada
     if (fase && fases.length > 0) {
       const maxOrden = Math.max(...fases.map((f) => f.orden))
       return Math.round((fase.orden / maxOrden) * 100)
     }
     return solicitud.progreso ?? 0
-  }, [selectedFaseId, solicitud, fases, solicitudFases, totalFasesCount])
+  }, [faseSeleccionada, solicitud, fases, filasFases])
 
   async function handleSaveFase() {
     if (!solicitud || savingFase) return
-    if (selectedFaseId === (solicitud.fase_id || null)) {
+    if (selectedFaseId === (faseSeleccionada?.id || null)) {
       setIsEditingFase(false)
       return
     }
@@ -678,9 +876,274 @@ export default function EmpleadoSolicitudDetallePage() {
     }
   }
 
+  useEffect(() => {
+    if (isEditingFase && !selectedFaseId && faseSeleccionada) {
+      setSelectedFaseId(faseSeleccionada.id)
+    }
+  }, [isEditingFase, selectedFaseId, faseSeleccionada])
+
   function handleCancelFase() {
-    setSelectedFaseId(solicitud?.fase_id ?? null)
     setIsEditingFase(false)
+  }
+
+  const toYMD = (value?: string | null): string => {
+    if (!value) return ''
+    if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value
+    const d = new Date(value)
+    if (isNaN(d.getTime())) return ''
+    const yyyy = d.getFullYear()
+    const mm = String(d.getMonth() + 1).padStart(2, '0')
+    const dd = String(d.getDate()).padStart(2, '0')
+    return `${yyyy}-${mm}-${dd}`
+  }
+
+  /**
+   * Guarda la fase directamente en Supabase VERIFICANDO que realmente se escribió
+   * (Supabase no da error cuando RLS bloquea un update: devuelve 0 filas).
+   * Lanza error si no se pudo.
+   */
+  async function persistirDirecto(
+    fase: any,
+    sfData: Record<string, any>,
+    evMeta: Record<string, any> | null,
+  ) {
+    if (!solicitud?.id) throw new Error('Solicitud no cargada')
+
+    if (!fase.virtual) {
+      const { data, error } = await supabase
+        .from('solicitud_fases')
+        .update(sfData)
+        .eq('id', fase.id)
+        .select('id')
+      if (error) throw error
+      if (!data || data.length === 0) {
+        throw new Error('La base de datos no actualizó ninguna fila (posible bloqueo por RLS).')
+      }
+    } else {
+      const { data, error } = await supabase
+        .from('solicitud_fases')
+        .insert({
+          solicitud_id: solicitud.id,
+          producto_fase_id: fase.producto_fase_id,
+          ...sfData,
+        })
+        .select('id')
+      if (error) throw error
+      if (!data || data.length === 0) {
+        throw new Error('La base de datos no insertó la fase (posible bloqueo por RLS).')
+      }
+    }
+
+    if (evMeta) {
+      const { data: existingEv, error: findEvErr } = await supabase
+        .from('fases_evidencias')
+        .select('id')
+        .eq('solicitud_id', solicitud.id)
+        .eq('producto_fase_id', fase.producto_fase_id)
+        .maybeSingle()
+      if (findEvErr) throw findEvErr
+
+      if (existingEv) {
+        const { data, error } = await supabase
+          .from('fases_evidencias')
+          .update({ ...evMeta, creado_en: new Date().toISOString() })
+          .eq('id', existingEv.id)
+          .select('id')
+        if (error) throw error
+        if (!data || data.length === 0) throw new Error('No se actualizó la evidencia (posible bloqueo por RLS).')
+      } else {
+        const { data, error } = await supabase
+          .from('fases_evidencias')
+          .insert({
+            solicitud_id: solicitud.id,
+            producto_fase_id: fase.producto_fase_id,
+            fase_id: fase.faseId,
+            laboratorio_id: solicitud.laboratorio_id,
+            ...evMeta,
+          })
+          .select('id')
+        if (error) throw error
+        if (!data || data.length === 0) throw new Error('No se guardó la evidencia (posible bloqueo por RLS).')
+      }
+    }
+  }
+
+  /**
+   * Respaldo: guarda mediante la API del servidor (/api/solicitud-fases),
+   * que usa la service role y por lo tanto no depende de RLS.
+   */
+  async function persistirPorApi(
+    fase: any,
+    sfData: Record<string, any>,
+    evMeta: Record<string, any> | null,
+    errorDirecto: any,
+  ) {
+    const { data: sessionData } = await supabase.auth.getSession()
+    const token = sessionData?.session?.access_token
+    let res: Response
+    try {
+      res = await fetch('/api/solicitud-fases', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          solicitud_id: solicitud!.id,
+          producto_fase_id: fase.producto_fase_id,
+          fase_id: fase.faseId,
+          ...sfData,
+          evidencia: evMeta,
+        }),
+      })
+    } catch (e: any) {
+      throw new Error(`${errorDirecto?.message || 'Error al guardar'} / API: ${e?.message || 'sin conexión'}`)
+    }
+    if (!res.ok) {
+      let detalle = `HTTP ${res.status}`
+      try {
+        const j = await res.json()
+        detalle = j?.error || detalle
+      } catch {
+        // ignore
+      }
+      throw new Error(`${errorDirecto?.message || 'Error al guardar'} / API: ${detalle}`)
+    }
+  }
+
+  /**
+   * Guarda una fase.
+   * - `evidencia` solo viene cuando el nuevo estado es COMPLETADO.
+   * - La fecha de prueba NO se toca nunca.
+   * Devuelve true si se guardó correctamente.
+   */
+  async function handleSaveFaseFila(fase: any, evidencia: File | null): Promise<boolean> {
+    if (!solicitud?.id || !solicitud.laboratorio_id) return false
+    setSavingFaseFilaId(fase.id)
+    try {
+      const completando = isFaseCompletada(fase.estado)
+      const enProgreso = fase.estado === 'en_progreso'
+
+      if (completando && !evidencia) {
+        throw new Error('Para completar la fase debe adjuntar una evidencia.')
+      }
+
+      let empleadoId: string | null = null
+      let empleadoNombre: string | null = null
+      let evMeta: Record<string, any> | null = null
+
+      if (completando || enProgreso) {
+        // Usar el empleado actual ya cargado en la sesión, o cargarlo si no está
+        if (!empleadoActual) {
+          const { data: { user } } = await supabase.auth.getUser()
+          if (user) {
+            const { data: emp } = await supabase
+              .from('empleados')
+              .select('id, nombre')
+              .eq('email', user.email || '')
+              .eq('laboratorio_id', solicitud.laboratorio_id)
+              .maybeSingle()
+            if (emp) {
+              empleadoId = (emp as any).id || null
+              empleadoNombre = (emp as any).nombre || ''
+              setEmpleadoActual(empleadoNombre as string)
+            }
+          }
+        } else {
+          // Si ya tenemos el nombre, necesitamos el ID - cargarlo
+          if (!empleadoId) {
+            const { data: { user } } = await supabase.auth.getUser()
+            if (user) {
+              const { data: emp } = await supabase
+                .from('empleados')
+                .select('id')
+                .eq('email', user.email || '')
+                .eq('laboratorio_id', solicitud.laboratorio_id)
+                .maybeSingle()
+              if (emp) empleadoId = (emp as any).id || null
+            }
+          }
+          empleadoNombre = empleadoActual
+        }
+
+        if (completando && evidencia) {
+          const bytes = await evidencia.arrayBuffer()
+          const fileBuffer = new Uint8Array(bytes)
+          const filePath = `fases-evidencias/${solicitud.laboratorio_id}/${solicitud.id}/${Date.now()}_${evidencia.name.replace(/[^a-zA-Z0-9_.-]/g, '_')}`
+          const { error: uploadError } = await supabase.storage
+            .from('fases-evidencias')
+            .upload(filePath, fileBuffer, { contentType: evidencia.type, upsert: true })
+          if (uploadError) throw new Error('Error al subir la evidencia: ' + uploadError.message)
+          const { data: publicUrlData } = supabase.storage.from('fases-evidencias').getPublicUrl(filePath)
+          evMeta = {
+            empleado_id: empleadoId || null,
+            archivo_url: publicUrlData?.publicUrl || null,
+            nombre_archivo: evidencia.name,
+            tipo_mime: evidencia.type || null,
+            tamaño_bytes: evidencia.size || null,
+            laboratorio_id: solicitud.laboratorio_id,
+          }
+        }
+      }
+
+      // NO se envía fecha_prueba: no es editable.
+      const sfData: Record<string, any> = {
+        estado: fase.estado,
+        fecha_finalizacion: fase.fechaFinalizacion || null,
+      }
+      if ((completando || enProgreso) && empleadoNombre) sfData.realizado_por = empleadoNombre
+
+      try {
+        await persistirDirecto(fase, sfData, evMeta)
+      } catch (errDirecto: any) {
+        console.warn('Guardado directo falló, se intenta por API:', errDirecto)
+        await persistirPorApi(fase, sfData, evMeta, errDirecto)
+      }
+
+      // Recargar desde la BD para que la tabla refleje el estado real
+      await loadFases()
+      return true
+    } catch (e: any) {
+      alert('Error al guardar la fase: ' + (e?.message || 'desconocido'))
+      return false
+    } finally {
+      setSavingFaseFilaId(null)
+    }
+  }
+
+  /**
+   * Click en "Guardar" de una fila:
+   * - Si el nuevo estado es COMPLETADO -> pide evidencia (abre el diálogo).
+   * - Cualquier otro estado -> guarda directamente, sin evidencia.
+   */
+  async function handleClickGuardarFila(fase: any, edit: { estado: string; fechaFinalizacion: string }) {
+    const payload = {
+      ...fase,
+      estado: edit.estado,
+      fechaFinalizacion: edit.fechaFinalizacion,
+    }
+    if (isFaseCompletada(edit.estado)) {
+      setEvidenciaFile(null)
+      setFaseParaEvidencia(payload)
+      setOpenEvidenceDialog(true)
+      return
+    }
+    await handleSaveFaseFila(payload, null)
+  }
+
+  async function handleSubirEvidencia() {
+    if (!faseParaEvidencia || !evidenciaFile) return
+    setSubiendoEvidencia(true)
+    try {
+      const ok = await handleSaveFaseFila(faseParaEvidencia, evidenciaFile)
+      if (ok) {
+        setOpenEvidenceDialog(false)
+        setFaseParaEvidencia(null)
+        setEvidenciaFile(null)
+      }
+    } finally {
+      setSubiendoEvidencia(false)
+    }
   }
 
   if (loading) {
@@ -967,293 +1430,148 @@ export default function EmpleadoSolicitudDetallePage() {
             </div>
           </CardContent>
         </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Fichas técnicas</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {fichas.length > 0 ? (
-              <ul className="divide-y divide-border">
-                {fichas.map((ficha) => {
-                  const nombre = ficha.nombre || ficha.nombre_archivo || 'Ficha técnica'
-                  const fecha = formatFecha(ficha.fecha || ficha.created_at)
-                  const conSecciones = tieneSecciones(ficha)
-                  const href =
-                    ficha.archivo_url ||
-                    (ficha.nombre_archivo?.startsWith('http') ? ficha.nombre_archivo : null)
-                  const archivoVisible = isViewableDocument(ficha.nombre_archivo, ficha.tipo_mime)
-
-                  return (
-                    <li
-                      key={ficha.id}
-                      className="flex flex-col gap-2 py-2 sm:flex-row sm:items-center sm:justify-between"
-                    >
-                      <div className="flex min-w-0 items-center gap-3">
-                        <FileText className="size-4 shrink-0 text-muted-foreground" />
-                        <div className="min-w-0">
-                          <p className="truncate text-sm font-medium text-foreground">{nombre}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {ficha.tipo ? `${ficha.tipo} · ` : ''}
-                            {fecha}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        {conSecciones ? (
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            className="gap-2"
-                            onClick={() => setFichaVista(ficha)}
-                          >
-                            <Eye className="size-4" />
-                            Ver
-                          </Button>
-                        ) : href ? (
-                          <a
-                            href={href}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="text-xs text-accent underline"
-                          >
-                            {archivoVisible ? 'Abrir' : 'Descargar'}
-                          </a>
-                        ) : (
-                          <span className="text-xs text-muted-foreground">Sin contenido</span>
-                        )}
-                      </div>
-                    </li>
-                  )
-                })}
-              </ul>
-            ) : (
-              <span className="text-sm text-muted-foreground">Sin fichas técnicas registradas</span>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Materiales</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex flex-col gap-2 sm:flex-row">
-              <select
-                value={materialSel}
-                onChange={(e) => setMaterialSel(e.target.value)}
-                className="flex-1 h-10 rounded-lg border border-border bg-card px-3 text-sm text-foreground outline-none transition-colors focus:border-accent focus:ring-2 focus:ring-accent/30"
-                disabled={guardandoMaterial || catalogoMateriales.length === 0}
-              >
-                <option value="">
-                  {catalogoMateriales.length === 0 ? 'No hay materiales registrados en el laboratorio' : 'Seleccionar material...'}
-                </option>
-                {catalogoMateriales
-                  .filter((m) => !materialesSolicitud.some((x) => x.material_id === m.id))
-                  .map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {(m.codigo ? m.codigo + ' - ' : '') + (m.nombre || m.material || 'Material')}
-                      {m.numero_lote ? ' · Lote ' + m.numero_lote : ''}
-                    </option>
-                  ))}
-              </select>
-              <Button
-                onClick={handleAgregarMaterial}
-                disabled={guardandoMaterial || !materialSel}
-                className="sm:self-start"
-              >
-                {guardandoMaterial ? (
-                  <>
-                    <RefreshCw className="size-3 animate-spin mr-1" />
-                    Agregando…
-                  </>
-                ) : (
-                  'Agregar'
-                )}
-              </Button>
-            </div>
-
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-border">
-                    <th className="text-left py-2 px-2 text-xs text-muted-foreground font-medium">Material</th>
-                    <th className="text-left py-2 px-2 text-xs text-muted-foreground font-medium">Producto</th>
-                    <th className="text-left py-2 px-2 text-xs text-muted-foreground font-medium">Número de lote</th>
-                    <th className="text-left py-2 px-2 text-xs text-muted-foreground font-medium">Fabricante</th>
-                    <th className="text-left py-2 px-2 text-xs text-muted-foreground font-medium">Proveedor</th>
-                    <th className="text-left py-2 px-2 text-xs text-muted-foreground font-medium">Acciones</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {materialesSolicitud.length === 0 ? (
-                    <tr>
-                      <td colSpan={6} className="py-4 text-center text-sm text-muted-foreground">
-                        Sin materiales agregados
-                      </td>
-                    </tr>
-                  ) : (
-                    materialesSolicitud.map((m) => (
-                      <tr key={m.id} className="border-b border-border/50">
-                        <td className="py-2 px-2 text-foreground">{m.material || '—'}</td>
-                        <td className="py-2 px-2 text-foreground">{m.producto || '—'}</td>
-                        <td className="py-2 px-2 text-foreground">{m.numero_lote || '—'}</td>
-                        <td className="py-2 px-2 text-foreground">{m.marca_fabricante || '—'}</td>
-                        <td className="py-2 px-2 text-foreground">{m.proveedor || '—'}</td>
-                        <td className="py-2 px-2 whitespace-nowrap">
-                          <button
-                            type="button"
-                            onClick={() => handleEliminarMaterial(m.id)}
-                            disabled={eliminandoMaterialId === m.id}
-                            className="text-xs text-red-600 underline disabled:opacity-50"
-                          >
-                            {eliminandoMaterialId === m.id ? 'Quitando…' : 'Eliminar'}
-                          </button>
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </CardContent>
-        </Card>
-
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Fases de fabricación</CardTitle>
           </CardHeader>
-          <CardContent>
-            <FasesFabricacion
-              solicitudId={solicitud.id}
-              productoIds={productoIds}
-              laboratorioId={solicitud.laboratorio_id || undefined}
-              dientes={solicitud.dientes || undefined}
-              cantidad={1}
-              productos={solicitud.productos || undefined}
-              modo="empleado"
-              onSave={async (fase) => {
-                if (!fase.faseId || !solicitud.id || !solicitud.laboratorio_id) return
-                try {
-                  let archivoUrl: string | null = null
-                  let nombreArchivo: string | null = null
-                  let tipoMime: string | null = null
-                  let tamañoBytes: number | null = null
-
-                  if (fase.evidenciaFile) {
-                    const bytes = await fase.evidenciaFile.arrayBuffer()
-                    const fileBuffer = new Uint8Array(bytes)
-                    const filePath = `fases-evidencias/${solicitud.laboratorio_id}/${solicitud.id}/${Date.now()}_${fase.evidenciaFile.name.replace(/[^a-zA-Z0-9_.-]/g, '_')}`
-
-                    const { error: uploadError } = await supabase.storage
-                      .from('fases-evidencias')
-                      .upload(filePath, fileBuffer, {
-                        contentType: fase.evidenciaFile.type,
-                        upsert: true,
-                      })
-
-                    if (uploadError) {
-                      throw new Error('Error al subir la evidencia a storage: ' + uploadError.message)
-                    }
-
-                    const { data: publicUrlData } = supabase.storage
-                      .from('fases-evidencias')
-                      .getPublicUrl(filePath)
-
-                    archivoUrl = publicUrlData?.publicUrl || null
-                    nombreArchivo = fase.evidenciaFile.name
-                    tipoMime = fase.evidenciaFile.type
-                    tamañoBytes = fase.evidenciaFile.size
-                  }
-
-                  // Obtener empleado actual de la sesión
-                  const { data: { user } } = await supabase.auth.getUser()
-                  let empleadoId: string | null = null
-                  if (user) {
-                    const { data: emp } = await supabase
-                      .from('empleados')
-                      .select('id')
-                      .eq('email', user.email || '')
-                      .eq('laboratorio_id', solicitud.laboratorio_id)
-                      .maybeSingle()
-                    if (emp) empleadoId = emp.id
-                  }
-
-                  // Guardar/actualizar solicitud_fases
-                  const { data: existingSf, error: findSfErr } = await supabase
-                    .from('solicitud_fases')
-                    .select('id')
-                    .eq('solicitud_id', solicitud.id)
-                    .eq('producto_fase_id', fase.productoFaseId)
-                    .maybeSingle()
-                  if (findSfErr) throw findSfErr
-
-                  const sfPayload: any = {
-                    solicitud_id: solicitud.id,
-                    producto_fase_id: fase.productoFaseId,
-                    estado: fase.estado,
-                    realizado_por: fase.empleadoNombre || null,
-                    fecha_finalizacion: fase.fechaFinalizacion || null,
-                    fecha_prueba: fase.fechaPrueba || null,
-                  }
-
-                  if (existingSf) {
-                    await supabase
-                      .from('solicitud_fases')
-                      .update({
-                        estado: fase.estado,
-                        realizado_por: fase.empleadoNombre || null,
-                        fecha_finalizacion: fase.fechaFinalizacion || null,
-                        fecha_prueba: fase.fechaPrueba || null,
-                      })
-                      .eq('id', existingSf.id)
-                  } else {
-                    await supabase.from('solicitud_fases').insert(sfPayload)
-                  }
-
-                  // Guardar/actualizar evidencia en fases_evidencias
-                  if (fase.evidenciaFile && archivoUrl) {
-                    const { data: existingEv, error: findEvErr } = await supabase
-                      .from('fases_evidencias')
-                      .select('id')
-                      .eq('solicitud_id', solicitud.id)
-                      .eq('producto_fase_id', fase.productoFaseId)
-                      .maybeSingle()
-                    if (findEvErr) throw findEvErr
-
-                    const evPayload: any = {
-                      solicitud_id: solicitud.id,
-                      producto_fase_id: fase.productoFaseId,
-                      fase_id: fase.faseId,
-                      laboratorio_id: solicitud.laboratorio_id,
-                      empleado_id: empleadoId || null,
-                      archivo_url: archivoUrl,
-                      nombre_archivo: nombreArchivo || '',
-                      tipo_mime: tipoMime || null,
-                      tamaño_bytes: tamañoBytes || null,
-                    }
-
-                    if (existingEv) {
-                      await supabase
-                        .from('fases_evidencias')
-                        .update({
-                          archivo_url: archivoUrl,
-                          nombre_archivo: nombreArchivo || '',
-                          tipo_mime: tipoMime || null,
-                          tamaño_bytes: tamañoBytes || null,
-                          creado_en: new Date().toISOString(),
-                        })
-                        .eq('id', existingEv.id)
-                    } else {
-                      await supabase.from('fases_evidencias').insert(evPayload)
-                    }
-                  }
-                } catch (e: any) {
-                  alert('Error al guardar la fase: ' + (e?.message || 'desconocido'))
-                }
-              }}
-            />
+          <CardContent className="p-0">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border bg-secondary/30">
+                    <th className="px-4 py-3 text-left font-medium text-muted-foreground">Tipo</th>
+                    <th className="px-4 py-3 text-left font-medium text-muted-foreground">Estado</th>
+                    <th className="px-4 py-3 text-left font-medium text-muted-foreground">Realizada por</th>
+                    <th className="px-4 py-3 text-left font-medium text-muted-foreground">Fecha finalización</th>
+                    <th className="px-4 py-3 text-left font-medium text-muted-foreground">Fecha prueba</th>
+                    <th className="px-4 py-3 text-left font-medium text-muted-foreground">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {(function () {
+                    const grupos: Record<string, { nombre: string; items: any[] }> = {}
+                    filasFases.forEach((row: any) => {
+                      const nombreProducto = row.nombreProducto || 'Producto'
+                      if (!grupos[nombreProducto]) grupos[nombreProducto] = { nombre: nombreProducto, items: [] }
+                      grupos[nombreProducto].items.push(row)
+                    })
+                    return Object.entries(grupos).map(([nombreProducto, grupo]: any) => (
+                      <Fragment key={nombreProducto}>
+                        <tr className="bg-secondary/40">
+                          <td colSpan={6} className="px-4 py-2 font-semibold text-foreground">
+                            {nombreProducto}
+                          </td>
+                        </tr>
+                        {[...grupo.items]
+                          .sort((a: any, b: any) => a.orden - b.orden)
+                          .map((fase: any) => {
+                            // Bloqueo basado en lo que hay guardado en la BD (no en lo que el usuario está editando)
+                            const estaCompletada = isFaseCompletada(fase.estado)
+                            const edit = faseEdits[fase.id] || {
+                              estado: normalizeEstadoFase(fase.estado),
+                              fechaFinalizacion: fase.fecha_finalizacion || '',
+                            }
+                            // Si el estado de la BD no está en la lista, se agrega para que se muestre tal cual
+                            const opcionesEstado: { value: string; label: string }[] = [...ESTADO_FASE_OPTIONS]
+                            if (!opcionesEstado.some((o) => o.value === edit.estado)) {
+                              const extra = ESTADO_OPTIONS.find((o) => o.value === edit.estado)
+                              opcionesEstado.push({ value: edit.estado, label: extra?.label || edit.estado })
+                            }
+                            const guardandoEstaFila = savingFaseFilaId === fase.id
+                            return (
+                              <tr key={fase.id} className="transition-colors hover:bg-secondary/30">
+                                <td className="px-4 py-3">
+                                  <span className="font-medium text-foreground">{fase.nombreFase}</span>
+                                </td>
+                                <td className="px-4 py-3">
+                                  <select
+                                    value={edit.estado}
+                                    onChange={(e) =>
+                                      setFaseEdits((prev) => ({
+                                        ...prev,
+                                        [fase.id]: { ...(prev[fase.id] || edit), estado: e.target.value },
+                                      }))
+                                    }
+                                    className={SELECT_CLASS + ' ' + (estaCompletada ? 'text-green-800 bg-green-50 border-green-300' : '')}
+                                    disabled={estaCompletada || guardandoEstaFila}
+                                  >
+                                    {opcionesEstado.map((o) => (
+                                      <option key={o.value} value={o.value}>{o.label}</option>
+                                    ))}
+                                  </select>
+                                </td>
+                                <td className="px-4 py-3">
+                                  {(() => {
+                                    const edit = faseEdits[fase.id]
+                                    const estadoEdit = edit?.estado || normalizeEstadoFase(fase.estado)
+                                    const enProgresoOCompletado = estadoEdit === 'en_progreso' || isFaseCompletada(estadoEdit)
+                                    if (enProgresoOCompletado && empleadoActual) {
+                                      return <span className="text-sm text-foreground">{empleadoActual}</span>
+                                    }
+                                    return <span className="text-sm text-foreground">{fase.realizado_por || '—'}</span>
+                                  })()}
+                                </td>
+                                <td className="px-4 py-3">
+                                  <Input
+                                    type="date"
+                                    value={toYMD(edit.fechaFinalizacion)}
+                                    onChange={(e) =>
+                                      setFaseEdits((prev) => ({
+                                        ...prev,
+                                        [fase.id]: { ...(prev[fase.id] || edit), fechaFinalizacion: e.target.value },
+                                      }))
+                                    }
+                                    className={SELECT_CLASS}
+                                    disabled={estaCompletada || guardandoEstaFila}
+                                  />
+                                </td>
+                                <td className="px-4 py-3">
+                                  {/* Fecha de prueba: SOLO LECTURA, nunca editable */}
+                                  <Input
+                                    type="date"
+                                    value={toYMD(fase.fecha_prueba)}
+                                    readOnly
+                                    disabled
+                                    tabIndex={-1}
+                                    className={SELECT_CLASS + ' cursor-not-allowed opacity-70'}
+                                  />
+                                </td>
+                                <td className="px-4 py-3 whitespace-nowrap">
+                                  <Button
+                                    size="sm"
+                                    onClick={() => handleClickGuardarFila(fase, edit)}
+                                    disabled={estaCompletada || guardandoEstaFila}
+                                    className="w-full"
+                                  >
+                                    {guardandoEstaFila ? (
+                                      <>
+                                        <RefreshCw className="size-3 mr-1.5 animate-spin" />
+                                        Guardando…
+                                      </>
+                                    ) : (
+                                      <>
+                                        <Save className="size-3 mr-1.5" />
+                                        Guardar
+                                      </>
+                                    )}
+                                  </Button>
+                                </td>
+                              </tr>
+                            )
+                          })}
+                      </Fragment>
+                    ))
+                  })()}
+                  {filasFases.length === 0 && (
+                    <tr>
+                      <td colSpan={6} className="px-4 py-8 text-center text-sm text-muted-foreground">
+                        No hay fases disponibles
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
           </CardContent>
         </Card>
 
@@ -1396,7 +1714,159 @@ export default function EmpleadoSolicitudDetallePage() {
         </Card>
 
         <Card>
-          <CardContent className="grid gap-3 sm:grid-cols-2">
+          <CardHeader>
+            <CardTitle className="text-base">Materiales</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <select
+                value={materialSel}
+                onChange={(e) => setMaterialSel(e.target.value)}
+                className="flex-1 h-10 rounded-lg border border-border bg-card px-3 text-sm text-foreground outline-none transition-colors focus:border-accent focus:ring-2 focus:ring-accent/30"
+                disabled={guardandoMaterial || catalogoMateriales.length === 0}
+              >
+                <option value="">
+                  {catalogoMateriales.length === 0 ? 'No hay materiales registrados en el laboratorio' : 'Seleccionar material...'}
+                </option>
+                {catalogoMateriales
+                  .filter((m) => !materialesSolicitud.some((x) => x.material_id === m.id))
+                  .map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {(m.codigo ? m.codigo + ' - ' : '') + (m.nombre || m.material || 'Material')}
+                      {m.numero_lote ? ' · Lote ' + m.numero_lote : ''}
+                    </option>
+                  ))}
+              </select>
+              <Button
+                onClick={handleAgregarMaterial}
+                disabled={guardandoMaterial || !materialSel}
+                className="sm:self-start"
+              >
+                {guardandoMaterial ? (
+                  <>
+                    <RefreshCw className="size-3 animate-spin mr-1" />
+                    Agregando…
+                  </>
+                ) : (
+                  'Agregar'
+                )}
+              </Button>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border">
+                    <th className="text-left py-2 px-2 text-xs text-muted-foreground font-medium">Material</th>
+                    <th className="text-left py-2 px-2 text-xs text-muted-foreground font-medium">Producto</th>
+                    <th className="text-left py-2 px-2 text-xs text-muted-foreground font-medium">Número de lote</th>
+                    <th className="text-left py-2 px-2 text-xs text-muted-foreground font-medium">Fabricante</th>
+                    <th className="text-left py-2 px-2 text-xs text-muted-foreground font-medium">Proveedor</th>
+                    <th className="text-left py-2 px-2 text-xs text-muted-foreground font-medium">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {materialesSolicitud.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="py-4 text-center text-sm text-muted-foreground">
+                        Sin materiales agregados
+                      </td>
+                    </tr>
+                  ) : (
+                    materialesSolicitud.map((m) => (
+                      <tr key={m.id} className="border-b border-border/50">
+                        <td className="py-2 px-2 text-foreground">{m.material || '—'}</td>
+                        <td className="py-2 px-2 text-foreground">{m.producto || '—'}</td>
+                        <td className="py-2 px-2 text-foreground">{m.numero_lote || '—'}</td>
+                        <td className="py-2 px-2 text-foreground">{m.marca_fabricante || '—'}</td>
+                        <td className="py-2 px-2 text-foreground">{m.proveedor || '—'}</td>
+                        <td className="py-2 px-2 whitespace-nowrap">
+                          <button
+                            type="button"
+                            onClick={() => handleEliminarMaterial(m.id)}
+                            disabled={eliminandoMaterialId === m.id}
+                            className="text-xs text-red-600 underline disabled:opacity-50"
+                          >
+                            {eliminandoMaterialId === m.id ? 'Quitando…' : 'Eliminar'}
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Fichas técnicas</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {fichas.length > 0 ? (
+              <ul className="divide-y divide-border">
+                {fichas.map((ficha) => {
+                  const nombre = ficha.nombre || ficha.nombre_archivo || 'Ficha técnica'
+                  const fecha = formatFecha(ficha.fecha || ficha.created_at)
+                  const conSecciones = tieneSecciones(ficha)
+                  const href =
+                    ficha.archivo_url ||
+                    (ficha.nombre_archivo?.startsWith('http') ? ficha.nombre_archivo : null)
+                  const archivoVisible = isViewableDocument(ficha.nombre_archivo, ficha.tipo_mime)
+
+                  return (
+                    <li
+                      key={ficha.id}
+                      className="flex flex-col gap-2 py-2 sm:flex-row sm:items-center sm:justify-between"
+                    >
+                      <div className="flex min-w-0 items-center gap-3">
+                        <FileText className="size-4 shrink-0 text-muted-foreground" />
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium text-foreground">{nombre}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {ficha.tipo ? `${ficha.tipo} · ` : ''}
+                            {fecha}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {conSecciones ? (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="gap-2"
+                            onClick={() => setFichaVista(ficha)}
+                          >
+                            <Eye className="size-4" />
+                            Ver
+                          </Button>
+                        ) : href ? (
+                          <a
+                            href={href}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-xs text-accent underline"
+                          >
+                            {archivoVisible ? 'Abrir' : 'Descargar'}
+                          </a>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">Sin contenido</span>
+                        )}
+                      </div>
+                    </li>
+                  )
+                })}
+              </ul>
+            ) : (
+              <span className="text-sm text-muted-foreground">Sin fichas técnicas registradas</span>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="space-y-4">
             <div className="sm:col-span-2">
               <span className="block text-xs text-muted-foreground mb-1">Encuesta posadaptación</span>
               {encuestas.posAdaptacion ? (
@@ -1440,6 +1910,11 @@ export default function EmpleadoSolicitudDetallePage() {
                 <span className="text-sm text-muted-foreground">Sin encuesta posadaptación</span>
               )}
             </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="space-y-4">
             <div className="sm:col-span-2">
               <span className="block text-xs text-muted-foreground mb-1">Buzón de quejas / reclamos / sugerencias</span>
               {encuestas.buzon ? (
@@ -1588,6 +2063,104 @@ export default function EmpleadoSolicitudDetallePage() {
           </div>
         </div>
       </div>
+
+      {/* Diálogo de evidencia: SOLO se abre cuando la fase se guarda como COMPLETADO */}
+      {openEvidenceDialog && faseParaEvidencia && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="bg-card border border-border rounded-xl p-6 w-full max-w-md shadow-xl">
+            <div className="flex items-center gap-2 mb-4">
+              <Upload className="size-5 text-primary" />
+              <h2 className="text-lg font-semibold">Subir evidencia de fase</h2>
+            </div>
+            <p className="text-sm text-muted-foreground mb-1">
+              Fase: <span className="font-medium">{faseParaEvidencia.nombreFase || faseParaEvidencia.nombre}</span>
+            </p>
+            <p className="text-xs text-muted-foreground mb-4">
+              Para marcar la fase como completada debe adjuntar una evidencia (foto).
+            </p>
+            <div className="flex flex-col gap-2 mb-4 sm:flex-row">
+              <label className="flex-1 cursor-pointer rounded-full border border-input bg-card px-4 py-2 text-sm font-semibold text-foreground text-center hover:bg-secondary/50">
+                Subir foto
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0] || null
+                    setEvidenciaFile(file)
+                  }}
+                />
+              </label>
+              <button
+                type="button"
+                onClick={() => setCameraOpen(true)}
+                className="flex-1 cursor-pointer rounded-full bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground text-center hover:bg-primary/90"
+              >
+                Tomar foto
+              </button>
+            </div>
+            {evidenciaFile && (
+              <p className="mb-4 truncate text-xs text-foreground">
+                Archivo seleccionado: <span className="font-medium">{evidenciaFile.name}</span>
+              </p>
+            )}
+            {cameraOpen && (
+              <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80">
+                <div className="bg-card rounded-xl p-4 w-full max-w-md space-y-3">
+                  <video ref={videoRef} autoPlay playsInline muted className="w-full rounded-lg bg-black" />
+                  <div className="flex justify-end gap-2">
+                    <Button variant="outline" size="sm" onClick={() => setCameraOpen(false)}>
+                      Cancelar
+                    </Button>
+                    <Button
+                      size="sm"
+                      onClick={() => {
+                        const video = videoRef.current
+                        if (!video) return
+                        const canvas = document.createElement('canvas')
+                        canvas.width = video.videoWidth
+                        canvas.height = video.videoHeight
+                        const ctx = canvas.getContext('2d')
+                        if (!ctx) return
+                        ctx.drawImage(video, 0, 0)
+                        canvas.toBlob((blob) => {
+                          if (!blob) return
+                          const file = new File([blob], `foto_${Date.now()}.jpg`, { type: 'image/jpeg' })
+                          setEvidenciaFile(file)
+                          setCameraOpen(false)
+                        }, 'image/jpeg', 0.9)
+                      }}
+                    >
+                      Capturar
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )}
+            <div className="flex justify-end gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={subiendoEvidencia}
+                onClick={() => {
+                  setOpenEvidenceDialog(false)
+                  setFaseParaEvidencia(null)
+                  setEvidenciaFile(null)
+                }}
+              >
+                Cancelar
+              </Button>
+              <Button
+                size="sm"
+                onClick={handleSubirEvidencia}
+                disabled={subiendoEvidencia || !evidenciaFile}
+              >
+                {subiendoEvidencia ? 'Guardando…' : 'Completar fase'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {fichaVista && (
         <div

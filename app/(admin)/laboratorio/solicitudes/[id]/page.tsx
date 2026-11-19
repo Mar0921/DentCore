@@ -17,6 +17,9 @@ import type { ToothStatus } from '@/components/dentcore/solicitud/solicitud-type
 
 const GARANTIA_VIEWER_URL = (solicitudId: string) => `/api/garantia?solicitud_id=${encodeURIComponent(solicitudId)}`
 
+// AJUSTA: nombre real del bucket donde se guardan los archivos de las solicitudes
+const BUCKET_ARCHIVOS = 'solicitudes'
+
 function isViewableDocument(nombreArchivo?: string | null, tipoMime?: string | null) {
   if (!nombreArchivo && !tipoMime) return false
   const source = `${nombreArchivo || ''} ${tipoMime || ''}`.toLowerCase()
@@ -134,7 +137,10 @@ interface SolicitudEditable {
   codigo_trazabilidad: string | null
   productos: string | null
   piezas_enviadas: string | null
-  archivos: string[] | null
+  // Puede llegar como array, string JSON, literal de Postgres u objetos
+  archivos: unknown
+  // Imagen del dibujo de la zona (URL o data URL). Opcional.
+  dibujo_zona?: string | null
 }
 
 const ESTADO_OPTIONS = [
@@ -177,9 +183,96 @@ function tieneSecciones(ficha: FichaRegistro) {
   return Array.isArray(ficha.secciones) && ficha.secciones.length > 0
 }
 
-function nombreArchivoAdjunto(archivo: string) {
-  const parts = archivo.split('|')
-  return parts[0]?.trim() || archivo
+/* ------------------------------------------------------------------ */
+/* Adjuntos de la solicitud                                            */
+/* ------------------------------------------------------------------ */
+
+interface AdjuntoInfo {
+  nombre: string
+  href: string | null // URL lista para usar
+  ruta: string | null // ruta dentro del bucket (si no era una URL)
+  esImagen: boolean
+  esDibujoZona: boolean
+}
+
+const EXT_IMAGEN = /\.(png|jpe?g|gif|webp|svg|bmp|avif)(\?|#|$)/i
+const REGEX_DIBUJO = /dibujo/i
+const REGEX_URL = /^(https?:|data:|blob:|\/)/i
+
+/** Acepta: array, string JSON, literal de Postgres {a,b}, string suelto u objeto. */
+function normalizarArchivos(valor: unknown): unknown[] {
+  if (!valor) return []
+  if (Array.isArray(valor)) return valor
+  if (typeof valor === 'string') {
+    const t = valor.trim()
+    if (!t) return []
+    if (t.startsWith('[') || t.startsWith('{"')) {
+      try {
+        const p = JSON.parse(t)
+        return Array.isArray(p) ? p : [p]
+      } catch {
+        /* sigue */
+      }
+    }
+    if (t.startsWith('{') && t.endsWith('}')) {
+      return t
+        .slice(1, -1)
+        .split(',')
+        .map((s) => s.trim().replace(/^"|"$/g, ''))
+        .filter(Boolean)
+    }
+    return [t]
+  }
+  if (typeof valor === 'object') return [valor]
+  return []
+}
+
+/**
+ * Formatos soportados de cada elemento:
+ *  - "nombre|url"  - "url"  - "ruta/en/bucket.png"  - "data:image/png;base64,..."
+ *  - { nombre | name, url | href | path }
+ */
+function parseAdjunto(archivo: unknown, idx: number): AdjuntoInfo {
+  let nombre = ''
+  let valor = ''
+
+  if (archivo && typeof archivo === 'object') {
+    const a = archivo as Record<string, any>
+    nombre = String(a.nombre ?? a.name ?? a.filename ?? '').trim()
+    valor = String(a.url ?? a.href ?? a.publicUrl ?? a.path ?? a.ruta ?? '').trim()
+  } else {
+    const raw = String(archivo ?? '').trim()
+    const pipe = raw.indexOf('|')
+    if (pipe > -1) {
+      nombre = raw.slice(0, pipe).trim()
+      valor = raw.slice(pipe + 1).trim()
+    } else {
+      valor = raw
+    }
+  }
+
+  const esUrl = REGEX_URL.test(valor)
+
+  if (!nombre && valor && !/^data:/i.test(valor)) {
+    try {
+      nombre = decodeURIComponent(new URL(valor, 'http://x').pathname.split('/').pop() || '')
+    } catch {
+      nombre = valor.split('/').pop() || valor
+    }
+  }
+  if (!nombre) nombre = `Archivo ${idx + 1}`
+
+  const esDibujoZona = REGEX_DIBUJO.test(nombre) || (!/^data:/i.test(valor) && REGEX_DIBUJO.test(valor))
+  const esImagen =
+    /^data:image\//i.test(valor) || EXT_IMAGEN.test(nombre) || EXT_IMAGEN.test(valor) || esDibujoZona
+
+  return {
+    nombre,
+    href: esUrl ? valor : null,
+    ruta: !esUrl && valor ? valor.replace(/^\/+/, '') : null,
+    esImagen,
+    esDibujoZona,
+  }
 }
 
 export default function SolicitudDetallePage() {
@@ -208,6 +301,8 @@ export default function SolicitudDetallePage() {
   const [fichas, setFichas] = useState<FichaRegistro[]>([])
   const [fichaVista, setFichaVista] = useState<FichaRegistro | null>(null)
   const [laboratorio, setLaboratorio] = useState<LaboratorioInfo | null>(null)
+  // URLs firmadas para archivos guardados como ruta de Storage
+  const [urlsFirmadas, setUrlsFirmadas] = useState<Record<string, string>>({})
 
   // Refs para exportar a PDF
   const preescripcionRef = useRef<HTMLDivElement>(null)
@@ -234,14 +329,13 @@ export default function SolicitudDetallePage() {
   }, [id])
 
   // Datos del laboratorio (para el encabezado de la preescripción)
-  // SUPOSICIÓN: tabla "laboratorios" con columnas nombre, nit, direccion, ciudad, telefono, correo/email.
   useEffect(() => {
     if (!solicitud?.laboratorio_id) return
 
     async function loadLaboratorio() {
       try {
         const { data, error } = await supabase
-          .from('laboratorios')
+          .from('laboratorio')
           .select('*')
           .eq('id', solicitud!.laboratorio_id)
           .maybeSingle()
@@ -432,6 +526,53 @@ export default function SolicitudDetallePage() {
 
   const selectedTeeth = useMemo(() => parseDientes(solicitud?.dientes), [solicitud?.dientes])
 
+  // Adjuntos base (sin resolver URLs firmadas)
+  const adjuntosBase = useMemo(
+    () => normalizarArchivos(solicitud?.archivos).map((a, i) => parseAdjunto(a, i)),
+    [solicitud?.archivos],
+  )
+
+  // Generar URLs firmadas para archivos guardados como ruta de Storage
+  useEffect(() => {
+    const rutas = adjuntosBase.filter((a) => !a.href && a.ruta).map((a) => a.ruta as string)
+    if (rutas.length === 0) return
+    let cancelado = false
+
+    ;(async () => {
+      const res: Record<string, string> = {}
+      for (const ruta of rutas) {
+        const path = ruta.startsWith(`${BUCKET_ARCHIVOS}/`) ? ruta.slice(BUCKET_ARCHIVOS.length + 1) : ruta
+        const { data, error } = await supabase.storage.from(BUCKET_ARCHIVOS).createSignedUrl(path, 3600)
+        if (error) console.error('No se pudo firmar', path, error.message)
+        else if (data?.signedUrl) res[ruta] = data.signedUrl
+      }
+      if (!cancelado) setUrlsFirmadas(res)
+    })()
+
+    return () => {
+      cancelado = true
+    }
+  }, [adjuntosBase])
+
+  // Adjuntos procesados + dibujo de la zona
+  const { dibujoZonaSrc, adjuntos } = useMemo(() => {
+    const resueltos = adjuntosBase.map((a) => ({
+      ...a,
+      href: a.href ?? (a.ruta ? urlsFirmadas[a.ruta] ?? null : null),
+    }))
+
+    // 1) campo propio "dibujo_zona"  2) adjunto cuyo nombre o ruta contenga "dibujo"
+    const campo = solicitud?.dibujo_zona?.trim()
+    const desdeCampo = campo && REGEX_URL.test(campo) ? campo : null
+    const desdeAdjunto = resueltos.find((p) => p.esDibujoZona && p.href)?.href || null
+
+    return {
+      dibujoZonaSrc: desdeCampo || desdeAdjunto,
+      // El dibujo de la zona se muestra en su propio bloque; el resto va en "Documentos adjuntos"
+      adjuntos: resueltos.filter((p) => !p.esDibujoZona),
+    }
+  }, [adjuntosBase, urlsFirmadas, solicitud?.dibujo_zona])
+
   useEffect(() => {
     syncTeethFromSolicitud()
   }, [solicitud])
@@ -576,6 +717,9 @@ export default function SolicitudDetallePage() {
         onExportOrden={handleExportOrden}
       />
 
+      {/* ============================================================
+          1) DETALLE DE LA SOLICITUD
+         ============================================================ */}
       <Card>
         <CardHeader>
           <CardTitle className="text-base">{isEditing ? 'Edición' : 'Detalle de solicitud'}</CardTitle>
@@ -785,32 +929,6 @@ export default function SolicitudDetallePage() {
                 <span className="text-sm text-foreground whitespace-pre-wrap">{solicitud.indicaciones || '—'}</span>
               </div>
               <div className="grid gap-1.5 sm:col-span-2">
-                <span className="text-xs text-muted-foreground">Documentos adjuntos</span>
-                {Array.isArray(solicitud.archivos) && solicitud.archivos.length > 0 ? (
-                  <ul className="list-disc pl-5 text-sm text-foreground">
-                    {solicitud.archivos.map((archivo: string, idx: number) => {
-                      const parts = archivo.split('|')
-                      const nombre = parts[0]?.trim() || archivo
-                      const url = parts.length > 1 ? parts.slice(1).join('|').trim() : null
-                      const href = url || (archivo.startsWith('http') || archivo.startsWith('data:') ? archivo : null)
-                      return (
-                        <li key={idx}>
-                          {href ? (
-                            <a href={href} target="_blank" rel="noreferrer" className="underline text-primary">
-                              {nombre}
-                            </a>
-                          ) : (
-                            nombre
-                          )}
-                        </li>
-                      )
-                    })}
-                  </ul>
-                ) : (
-                  <span className="text-sm text-muted-foreground">Sin documentos adjuntos</span>
-                )}
-              </div>
-              <div className="grid gap-1.5 sm:col-span-2">
                 <span className="text-xs text-muted-foreground">Dientes registrados</span>
                 <DentalChart
                   selectedTeeth={selectedTeeth}
@@ -843,6 +961,66 @@ export default function SolicitudDetallePage() {
               </div>
             </>
           )}
+
+          {/* Dibujo de la zona (visible en modo lectura y edición) */}
+          <div className="grid gap-1.5 sm:col-span-2">
+            <span className="text-xs text-muted-foreground">Dibujo de la zona</span>
+            {dibujoZonaSrc ? (
+              <a href={dibujoZonaSrc} target="_blank" rel="noreferrer" className="block w-full max-w-xl">
+                <div className="overflow-hidden rounded-lg border border-border bg-white">
+                  <img
+                    src={dibujoZonaSrc}
+                    alt="Dibujo de la zona"
+                    className="max-h-[420px] w-full object-contain"
+                  />
+                </div>
+              </a>
+            ) : (
+              <span className="text-sm text-muted-foreground">Sin dibujo de la zona</span>
+            )}
+          </div>
+
+          {/* Documentos adjuntos (visible en modo lectura y edición) */}
+          <div className="grid gap-1.5 sm:col-span-2">
+            <span className="text-xs text-muted-foreground">Documentos adjuntos</span>
+            {adjuntos.length > 0 ? (
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                {adjuntos.map((adj, idx) => (
+                  <div key={idx} className="group relative">
+                    {adj.esImagen && adj.href ? (
+                      <a href={adj.href} target="_blank" rel="noreferrer" className="block">
+                        <div className="overflow-hidden rounded-lg border border-border bg-secondary/30">
+                          <img
+                            src={adj.href}
+                            alt={adj.nombre}
+                            className="h-32 w-full object-cover transition-transform group-hover:scale-105"
+                          />
+                        </div>
+                        <p className="mt-1 truncate text-xs text-primary underline">{adj.nombre}</p>
+                      </a>
+                    ) : adj.href ? (
+                      <a
+                        href={adj.href}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="flex items-center gap-2 rounded-lg border border-border bg-secondary/30 p-3 transition-colors hover:bg-secondary/50"
+                      >
+                        <FileText className="size-5 shrink-0 text-muted-foreground" />
+                        <span className="truncate text-xs text-primary underline">{adj.nombre}</span>
+                      </a>
+                    ) : (
+                      <div className="flex items-center gap-2 rounded-lg border border-border bg-secondary/30 p-3">
+                        <FileText className="size-5 shrink-0 text-muted-foreground" />
+                        <span className="truncate text-xs text-muted-foreground">{adj.nombre}</span>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <span className="text-sm text-muted-foreground">Sin documentos adjuntos</span>
+            )}
+          </div>
         </CardContent>
         <CardFooter className="flex justify-end gap-2 border-t border-border">
           <Button variant="outline" onClick={() => (isEditing ? cancelarEdicion() : router.back())}>Cancelar</Button>
@@ -869,6 +1047,112 @@ export default function SolicitudDetallePage() {
         </CardFooter>
       </Card>
 
+      {/* ============================================================
+          2) ORDEN DE FABRICACIÓN + botón de descarga
+         ============================================================ */}
+      <div className="space-y-2">
+        <div className="flex justify-end">
+          <Button variant="outline" size="sm" className="gap-2" onClick={handleExportOrden}>
+            <Download className="size-4" />
+            Descargar orden de fabricación
+          </Button>
+        </div>
+        <div ref={ordenRef}>
+          <OrdenFabricacion solicitud={solicitud} onAvanceChange={setAvance} />
+        </div>
+      </div>
+
+      {/* ============================================================
+          3) FICHAS TÉCNICAS
+         ============================================================ */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Fichas técnicas</CardTitle>
+        </CardHeader>
+        <CardContent className="grid gap-3 sm:grid-cols-2">
+          <div className="sm:col-span-2">
+            <span className="text-xs text-muted-foreground">Documentos técnicos de la solicitud</span>
+            {fichas.length > 0 ? (
+              <ul className="mt-2 divide-y divide-border">
+                {fichas.map((ficha) => {
+                  const nombre = ficha.nombre || ficha.nombre_archivo || 'Ficha técnica'
+                  const fecha = formatFecha(ficha.fecha || ficha.created_at)
+                  const conSecciones = tieneSecciones(ficha)
+                  const href =
+                    ficha.archivo_url ||
+                    (ficha.nombre_archivo?.startsWith('http') ? ficha.nombre_archivo : null)
+                  const archivoVisible = isViewableDocument(ficha.nombre_archivo, ficha.tipo_mime)
+
+                  return (
+                    <li
+                      key={ficha.id}
+                      className="flex flex-col gap-2 py-2 sm:flex-row sm:items-center sm:justify-between"
+                    >
+                      <div className="flex min-w-0 items-center gap-3">
+                        <FileText className="size-4 shrink-0 text-muted-foreground" />
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium text-foreground">{nombre}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {ficha.tipo ? `${ficha.tipo} · ` : ''}
+                            {fecha}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {conSecciones ? (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="gap-2"
+                            onClick={() => setFichaVista(ficha)}
+                          >
+                            <Eye className="size-4" />
+                            Ver
+                          </Button>
+                        ) : href ? (
+                          <a
+                            href={href}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-xs text-primary underline"
+                          >
+                            {archivoVisible ? 'Abrir' : 'Descargar'}
+                          </a>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">Sin contenido</span>
+                        )}
+                        <Button variant="destructive" size="sm" onClick={() => handleFichaDelete(ficha.id)}>
+                          Eliminar
+                        </Button>
+                      </div>
+                    </li>
+                  )
+                })}
+              </ul>
+            ) : (
+              <span className="mt-1 block text-sm text-muted-foreground">Sin fichas técnicas registradas</span>
+            )}
+            <div className="mt-4 flex gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() =>
+                  router.push(`/laboratorio/fichas-tecnicas?solicitud_id=${encodeURIComponent(solicitud.id)}`)
+                }
+              >
+                Gestionar fichas técnicas
+              </Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* ============================================================
+          4) DOCUMENTOS DE LA SOLICITUD
+             (términos de garantía, encuesta posadaptación, buzón)
+         ============================================================ */}
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Documentos de la solicitud</CardTitle>
@@ -1008,107 +1292,10 @@ export default function SolicitudDetallePage() {
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Fichas técnicas</CardTitle>
-        </CardHeader>
-        <CardContent className="grid gap-3 sm:grid-cols-2">
-          <div className="sm:col-span-2">
-            <span className="text-xs text-muted-foreground">Documentos técnicos de la solicitud</span>
-            {fichas.length > 0 ? (
-              <ul className="mt-2 divide-y divide-border">
-                {fichas.map((ficha) => {
-                  const nombre = ficha.nombre || ficha.nombre_archivo || 'Ficha técnica'
-                  const fecha = formatFecha(ficha.fecha || ficha.created_at)
-                  const conSecciones = tieneSecciones(ficha)
-                  const href =
-                    ficha.archivo_url ||
-                    (ficha.nombre_archivo?.startsWith('http') ? ficha.nombre_archivo : null)
-                  const archivoVisible = isViewableDocument(ficha.nombre_archivo, ficha.tipo_mime)
-
-                  return (
-                    <li
-                      key={ficha.id}
-                      className="flex flex-col gap-2 py-2 sm:flex-row sm:items-center sm:justify-between"
-                    >
-                      <div className="flex min-w-0 items-center gap-3">
-                        <FileText className="size-4 shrink-0 text-muted-foreground" />
-                        <div className="min-w-0">
-                          <p className="truncate text-sm font-medium text-foreground">{nombre}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {ficha.tipo ? `${ficha.tipo} · ` : ''}
-                            {fecha}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        {conSecciones ? (
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            className="gap-2"
-                            onClick={() => setFichaVista(ficha)}
-                          >
-                            <Eye className="size-4" />
-                            Ver
-                          </Button>
-                        ) : href ? (
-                          <a
-                            href={href}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="text-xs text-primary underline"
-                          >
-                            {archivoVisible ? 'Abrir' : 'Descargar'}
-                          </a>
-                        ) : (
-                          <span className="text-xs text-muted-foreground">Sin contenido</span>
-                        )}
-                        <Button variant="destructive" size="sm" onClick={() => handleFichaDelete(ficha.id)}>
-                          Eliminar
-                        </Button>
-                      </div>
-                    </li>
-                  )
-                })}
-              </ul>
-            ) : (
-              <span className="mt-1 block text-sm text-muted-foreground">Sin fichas técnicas registradas</span>
-            )}
-            <div className="mt-4 flex gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() =>
-                  router.push(`/laboratorio/fichas-tecnicas?solicitud_id=${encodeURIComponent(solicitud.id)}`)
-                }
-              >
-                Gestionar fichas técnicas
-              </Button>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Orden de fabricación + botón de descarga */}
-      <div className="space-y-2">
-        <div className="flex justify-end">
-          <Button variant="outline" size="sm" className="gap-2" onClick={handleExportOrden}>
-            <Download className="size-4" />
-            Descargar orden de fabricación
-          </Button>
-        </div>
-        <div ref={ordenRef}>
-          <OrdenFabricacion solicitud={solicitud} onAvanceChange={setAvance} />
-        </div>
-      </div>
-
       {/* ============================================================
           PREESCRIPCIÓN (oculta en pantalla; solo se usa para exportar)
-          Contiene únicamente: código de trazabilidad, datos del laboratorio
-          y los datos del detalle de la solicitud con el dentalgrama.
+          Contiene: código de trazabilidad, datos del laboratorio,
+          datos del detalle de la solicitud, dentalgrama y dibujo de la zona.
          ============================================================ */}
       <div
         aria-hidden="true"
@@ -1171,11 +1358,7 @@ export default function SolicitudDetallePage() {
               <PrintField label="Indicaciones" value={solicitud.indicaciones} full />
               <PrintField
                 label="Documentos adjuntos"
-                value={
-                  Array.isArray(solicitud.archivos) && solicitud.archivos.length > 0
-                    ? solicitud.archivos.map(nombreArchivoAdjunto).join(', ')
-                    : ''
-                }
+                value={adjuntos.length > 0 ? adjuntos.map((a) => a.nombre).join(', ') : ''}
                 full
               />
             </div>
@@ -1194,6 +1377,18 @@ export default function SolicitudDetallePage() {
                 Dientes: <span style={{ fontFamily: 'monospace' }}>{solicitud.dientes || '—'}</span>
               </div>
             </div>
+
+            {/* Dibujo de la zona */}
+            {dibujoZonaSrc ? (
+              <div className="no-break" style={{ marginBottom: 12 }}>
+                <div style={{ fontSize: 11, color: '#555', marginBottom: 4 }}>Dibujo de la zona</div>
+                <img
+                  src={dibujoZonaSrc}
+                  alt="Dibujo de la zona"
+                  style={{ maxWidth: '100%', maxHeight: 360, objectFit: 'contain', border: '1px solid #ccc', background: '#fff' }}
+                />
+              </div>
+            ) : null}
 
             <PrintField label="Notas" value={solicitud.notas} full />
 

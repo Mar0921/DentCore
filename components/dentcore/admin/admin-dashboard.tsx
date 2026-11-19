@@ -1,18 +1,19 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { MoreHorizontal, Eye, Plus, Search, FlaskConical, Users, UserRound, ClipboardList, TrendingUp, Upload } from 'lucide-react'
+import { Plus, FlaskConical, Users, ClipboardList, Upload } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { useRouter } from 'next/navigation'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { supabase } from '@/lib/supabase'
 
+// Nombre ÚNICO del bucket. Debe coincidir exactamente con el de Supabase Storage.
+const LOGO_BUCKET = 'logos-laboratorio'
+
 export function AdminDashboard() {
-  const [search, setSearch] = useState('')
-  const [statusFilter, setStatusFilter] = useState<string>('all')
   const [logoPreview, setLogoPreview] = useState<string | null>(null)
+  const [logoError, setLogoError] = useState(false)
+  const [uploadingLogo, setUploadingLogo] = useState(false)
   const [lab, setLab] = useState<any>(null)
   const [empleados, setEmpleados] = useState<any[]>([])
   const [solicitudes, setSolicitudes] = useState<any[]>([])
@@ -25,22 +26,35 @@ export function AdminDashboard() {
 
   async function loadData() {
     try {
-      const { data: emps } = await supabase
+      const { data: emps, error: empsError } = await supabase
         .from('empleados')
         .select('laboratorio_id')
         .not('laboratorio_id', 'is', null)
         .order('laboratorio_id', { ascending: true })
+      if (empsError) console.error('Error empleados:', empsError)
+
       const labIds = (emps?.map((e: any) => e.laboratorio_id) || []).filter(Boolean)
       const labId = labIds.length > 0 ? labIds[0] : null
 
       if (labId) {
-        const { data: labs } = await supabase.from('laboratorio').select('*').eq('id', labId).limit(1)
-        if (labs && labs.length > 0) {
-          setLab(labs[0])
-        }
-        const { data: empsAll } = await supabase.from('empleados').select('*').eq('laboratorio_id', labId)
+        const { data: labs, error: labError } = await supabase
+          .from('laboratorio')
+          .select('*')
+          .eq('id', labId)
+          .limit(1)
+        if (labError) console.error('Error laboratorio:', labError)
+        if (labs && labs.length > 0) setLab(labs[0])
+
+        const { data: empsAll } = await supabase
+          .from('empleados')
+          .select('*')
+          .eq('laboratorio_id', labId)
         if (empsAll) setEmpleados(empsAll)
-        const { data: sols } = await supabase.from('solicitudes').select('*').eq('laboratorio_id', labId)
+
+        const { data: sols } = await supabase
+          .from('solicitudes')
+          .select('*')
+          .eq('laboratorio_id', labId)
         if (sols) setSolicitudes(sols)
       }
     } catch (err) {
@@ -54,35 +68,71 @@ export function AdminDashboard() {
     const file = event.target.files?.[0]
     if (!file || !lab?.id) return
 
+    if (!file.type.startsWith('image/')) {
+      alert('El archivo debe ser una imagen')
+      return
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      alert('La imagen no puede pesar más de 2 MB')
+      return
+    }
+
+    setUploadingLogo(true)
     try {
-      const ext = file.name.split('.').pop() || 'png'
-      const storagePath = `public/${lab.id}/${Date.now()}_${Math.random().toString(36).slice(2, 9)}.${ext}`
+      const ext = (file.name.split('.').pop() || 'png').toLowerCase()
+      const storagePath = `public/${lab.id}/${Date.now()}_${Math.random()
+        .toString(36)
+        .slice(2, 9)}.${ext}`
+
+      // 1. Subir al bucket
       const { error: uploadError } = await supabase.storage
-        .from('logos-laboratorio')
-        .upload(storagePath, file, { upsert: true })
+        .from(LOGO_BUCKET)
+        .upload(storagePath, file, { upsert: true, contentType: file.type })
 
-      if (uploadError) throw uploadError
+      if (uploadError) {
+        console.error('Error subiendo al bucket:', uploadError)
+        throw new Error('Storage: ' + uploadError.message)
+      }
 
-      const { data: { publicUrl } } = supabase.storage
-        .from('logos-laboratorio')
-        .getPublicUrl(storagePath)
+      // 2. URL pública
+      const { data: urlData } = supabase.storage.from(LOGO_BUCKET).getPublicUrl(storagePath)
+      const publicUrl = urlData.publicUrl
 
-      const { error: updateError } = await supabase
+      // 3. Guardar en la tabla y confirmar que se actualizó una fila
+      const { data: updated, error: updateError } = await supabase
         .from('laboratorio')
         .update({ logo_url: publicUrl })
         .eq('id', lab.id)
+        .select()
 
-      if (updateError) throw updateError
+      if (updateError) {
+        console.error('Error actualizando tabla:', updateError)
+        throw new Error('Tabla laboratorio: ' + updateError.message)
+      }
+      if (!updated || updated.length === 0) {
+        throw new Error(
+          'Tabla laboratorio: no se actualizó ninguna fila (revisa la política RLS de UPDATE)'
+        )
+      }
 
+      setLogoError(false)
       setLogoPreview(publicUrl)
       setLab({ ...lab, logo_url: publicUrl })
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error al subir logo:', err)
-      alert('Error al subir el logo')
+      alert('Error al subir el logo: ' + (err?.message ?? JSON.stringify(err)))
+    } finally {
+      setUploadingLogo(false)
+      event.target.value = ''
     }
   }
 
-  const logoToShow = logoPreview || lab?.logo_url || null
+  // Solo se usa la URL guardada si pertenece al bucket correcto
+  const savedLogo =
+    lab?.logo_url && String(lab.logo_url).includes(`/${LOGO_BUCKET}/`) ? lab.logo_url : null
+  const logoToShow = logoPreview || savedLogo
+  const showLogo = !!logoToShow && !logoError
+
   const activeEmployees = empleados.filter((e) => e.activo).length
   const pendingRequests = solicitudes.filter((r) => r.estado === 'pendiente').length
   const inProgressRequests = solicitudes.filter((r) => r.estado === 'en_proceso').length
@@ -94,7 +144,9 @@ export function AdminDashboard() {
   if (!lab) {
     return (
       <div className="p-8 text-center">
-        <p className="text-muted-foreground">No hay laboratorio registrado. Ve a la página de suscripción.</p>
+        <p className="text-muted-foreground">
+          No hay laboratorio registrado. Ve a la página de suscripción.
+        </p>
       </div>
     )
   }
@@ -104,30 +156,46 @@ export function AdminDashboard() {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h1 className="font-heading text-2xl font-bold text-primary">Panel de administración</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Información general del laboratorio, solicitudes y equipo</p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Información general del laboratorio, solicitudes y equipo
+          </p>
         </div>
         <div className="flex items-center gap-2">
           <Button className="gap-2" onClick={() => router.push('/laboratorio/solicitudes/nueva')}>
             <Plus className="size-4" />
             Nueva solicitud
           </Button>
-          <Button className="gap-2" variant="outline" onClick={() => router.push('/laboratorio/materiales')}>
+          <Button
+            className="gap-2"
+            variant="outline"
+            onClick={() => router.push('/laboratorio/materiales')}
+          >
             Materiales
           </Button>
         </div>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Información del laboratorio</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Información del laboratorio
+            </CardTitle>
             <FlaskConical className="size-4 text-primary" />
           </CardHeader>
           <CardContent>
             <div className="flex items-center gap-3">
-              <div className="flex size-14 items-center justify-center rounded-full border border-dashed border-border bg-secondary">
-                {logoToShow ? (
-                  <img src={logoToShow} alt="Logo" className="size-12 rounded-full object-cover" />
+              <div className="flex size-14 shrink-0 items-center justify-center overflow-hidden rounded-full border border-dashed border-border bg-secondary">
+                {showLogo ? (
+                  <img
+                    src={logoToShow as string}
+                    alt="Logo del laboratorio"
+                    className="size-14 object-cover"
+                    onError={() => {
+                      console.error('No cargó el logo:', logoToShow)
+                      setLogoError(true)
+                    }}
+                  />
                 ) : (
                   <FlaskConical className="size-6 text-muted-foreground" />
                 )}
@@ -136,10 +204,20 @@ export function AdminDashboard() {
                 <p className="text-sm font-bold text-primary">{lab.nombre}</p>
                 <p className="text-xs text-muted-foreground">{lab.email}</p>
                 <p className="text-xs text-muted-foreground">{lab.telefono}</p>
-                <label className="inline-flex cursor-pointer items-center gap-1.5 text-xs font-medium text-accent hover:underline">
+                <label
+                  className={`inline-flex items-center gap-1.5 text-xs font-medium text-accent hover:underline ${
+                    uploadingLogo ? 'pointer-events-none opacity-50' : 'cursor-pointer'
+                  }`}
+                >
                   <Upload className="size-3.5" />
-                  {logoToShow ? 'Cambiar logo' : 'Subir logo'}
-                  <input type="file" accept="image/*" className="hidden" onChange={handleLogoChange} />
+                  {uploadingLogo ? 'Subiendo...' : showLogo ? 'Cambiar logo' : 'Subir logo'}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={handleLogoChange}
+                    disabled={uploadingLogo}
+                  />
                 </label>
               </div>
             </div>
@@ -148,7 +226,9 @@ export function AdminDashboard() {
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Empleados activos</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Empleados activos
+            </CardTitle>
             <Users className="size-4 text-primary" />
           </CardHeader>
           <CardContent>
@@ -157,7 +237,10 @@ export function AdminDashboard() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card
+          className="cursor-pointer transition-colors hover:bg-secondary/50"
+          onClick={() => router.push('/laboratorio/solicitudes')}
+        >
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle className="text-sm font-medium text-muted-foreground">Solicitudes</CardTitle>
             <ClipboardList className="size-4 text-primary" />
@@ -181,10 +264,16 @@ export function AdminDashboard() {
           ) : (
             <div className="space-y-2">
               {solicitudes.slice(0, 5).map((r) => (
-                <div key={r.id} className="flex items-center justify-between rounded-lg border border-border p-3">
+                <div
+                  key={r.id}
+                  className="flex cursor-pointer items-center justify-between rounded-lg border border-border p-3 transition-colors hover:bg-secondary/50"
+                  onClick={() => router.push(`/laboratorio/solicitudes/${r.id}`)}
+                >
                   <div>
                     <p className="text-sm font-medium text-primary">{r.tipo}</p>
-                    <p className="text-xs text-muted-foreground">{r.odontologonombre || 'Sin odontólogo'}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {r.odontologonombre || 'Sin odontólogo'}
+                    </p>
                   </div>
                   <span className="text-xs text-muted-foreground">{r.estado}</span>
                 </div>

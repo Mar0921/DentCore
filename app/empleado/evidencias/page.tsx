@@ -14,19 +14,30 @@ export default function EmpleadoEvidenciasPage() {
       setLoading(true)
       const { data: { user } } = await supabase.auth.getUser()
       let empleadoId: string | null = null
+      let laboratorioId: string | null = null
       if (user) {
         const { data: emp } = await supabase
           .from('empleados')
-          .select('id')
+          .select('id, laboratorio_id')
           .eq('email', user.email || '')
           .maybeSingle()
-        if (emp) empleadoId = emp.id
+        if (emp) {
+          empleadoId = emp.id
+          laboratorioId = (emp as any).laboratorio_id
+        }
       }
       let q = supabase
         .from('fases_evidencias')
         .select('*, empleados(nombre), solicitudes(id, codigo_trazabilidad)')
         .order('creado_en', { ascending: false })
-      if (empleadoId) q = q.eq('empleado_id', empleadoId)
+      if (empleadoId) {
+        // Mostrar evidencias del empleado + las antiguas sin empleado_id pero de su laboratorio
+        if (laboratorioId) {
+          q = q.or(`empleado_id.eq.${empleadoId},and(laboratorio_id.eq.${laboratorioId},empleado_id.is.null)`)
+        } else {
+          q = q.eq('empleado_id', empleadoId)
+        }
+      }
       const { data } = await q
       setRows(data || [])
       setLoading(false)

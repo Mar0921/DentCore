@@ -97,6 +97,7 @@ const REGISTRO_VACIO: Registro = {
 
 const ESTADO_FASE_OPTIONS = [
   { value: 'pendiente', label: 'Pendiente' },
+  { value: 'en_progreso', label: 'En progreso' },
   { value: 'completado', label: 'Completado' },
 ]
 
@@ -837,7 +838,8 @@ export function OrdenFabricacion({
                                   value={r.estado}
                                   onChange={(e) => setCampo(f.id, 'estado', e.target.value)}
                                   className={`${INPUT_CLASS} ${
-                                    r.estado === 'completado' ? 'bg-green-100 text-green-800' : ''
+                                    r.estado === 'completado' ? 'bg-green-100 text-green-800' :
+                                    r.estado === 'en_progreso' ? 'bg-blue-100 text-blue-800' : ''
                                   }`}
                                 >
                                   {ESTADO_FASE_OPTIONS.map((o) => (

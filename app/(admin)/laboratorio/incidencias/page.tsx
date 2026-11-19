@@ -50,6 +50,11 @@ interface FaseLite {
   orden: number
 }
 
+interface TipoIncidencia {
+  id: string
+  nombre: string
+}
+
 function formatProductos(productos?: string | null) {
   if (!productos) return null
   const lines = productos.split(/\n|;/).map((l) => l.trim()).filter(Boolean)
@@ -91,6 +96,8 @@ export default function IncidenciasPage() {
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [open, setOpen] = useState(false)
+  const [tipoOpen, setTipoOpen] = useState(false)
+  const [nuevoTipo, setNuevoTipo] = useState('')
   const [editOpen, setEditOpen] = useState(false)
   const [form, setForm] = useState({ solicitud_id: '', tipo: '', fecha: '', hora: '', fase: '', responsable: '', descripcion: '' })
   const [editForm, setEditForm] = useState<Incidencia | null>(null)
@@ -98,6 +105,7 @@ export default function IncidenciasPage() {
   const [medidas, setMedidas] = useState<Medida[]>([])
   const [medidaForm, setMedidaForm] = useState({ estado: 'nueva', fecha_resolucion: '', responsable: '', medidas_tomadas: '' })
   const [fasesDisponibles, setFasesDisponibles] = useState<FaseLite[]>([])
+  const [tiposIncidencia, setTiposIncidencia] = useState<TipoIncidencia[]>([])
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
@@ -188,11 +196,13 @@ export default function IncidenciasPage() {
   async function fetchData() {
     setLoading(true)
     try {
-      const [incRes, solRes] = await Promise.all([fetch('/api/incidencias'), fetch('/api/solicitudes')])
-      const incJson = await incRes.json()
-      const solJson = await solRes.json()
-      if (incJson.data) setIncidencias(incJson.data)
-      if (solJson.data) setSolicitudes(solJson.data)
+   const [incRes, solRes, tiposRes] = await Promise.all([fetch('/api/incidencias'), fetch('/api/solicitudes'), fetch('/api/tipos-incidencia')])
+       const incJson = await incRes.json()
+       const solJson = await solRes.json()
+       const tiposJson = await tiposRes.json()
+       if (incJson.data) setIncidencias(incJson.data)
+       if (solJson.data) setSolicitudes(solJson.data)
+       if (tiposJson.data) setTiposIncidencia(tiposJson.data)
     } catch (e) {
       console.error(e)
     } finally {
@@ -487,7 +497,13 @@ export default function IncidenciasPage() {
                 {solicitudes.map((s) => (<option key={s.id} value={s.id}>{s.codigo_trazabilidad || s.id.slice(0, 8)} - {s.paciente || s.odontologonombre || s.tipo || ''}</option>))}
               </select>
             </div>
-            <div className="grid gap-1.5"><label className="text-sm font-medium text-primary">Tipo *</label><Input placeholder="Ej. Retraso, Calidad" value={form.tipo} onChange={(e) => setForm((f) => ({ ...f, tipo: e.target.value }))} /></div>
+            <div className="grid gap-1.5"><label className="text-sm font-medium text-primary">Tipo *</label>
+              <select value={form.tipo} onChange={(e) => setForm((f) => ({ ...f, tipo: e.target.value }))} className={SELECT_CLASS}>
+                <option value="">Seleccionar tipo...</option>
+                {tiposIncidencia.map((t) => (<option key={t.id} value={t.nombre}>{t.nombre}</option>))}
+              </select>
+              <Button variant="outline" size="sm" onClick={() => setTipoOpen(true)}>Crear tipo</Button>
+            </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="grid gap-1.5"><label className="text-sm font-medium text-primary">Fecha *</label><Input type="date" value={form.fecha} onChange={(e) => setForm((f) => ({ ...f, fecha: e.target.value }))} /></div>
               <div className="grid gap-1.5"><label className="text-sm font-medium text-primary">Hora *</label><Input type="time" value={form.hora} onChange={(e) => setForm((f) => ({ ...f, hora: e.target.value }))} /></div>
@@ -505,6 +521,24 @@ export default function IncidenciasPage() {
             <div className="grid gap-1.5"><label className="text-sm font-medium text-primary">Descripción *</label><Textarea placeholder="Descripción de la incidencia" value={form.descripcion} onChange={(e) => setForm((f) => ({ ...f, descripcion: e.target.value }))} rows={4} /></div>
           </div>
           <DialogFooter><Button variant="outline" onClick={() => setOpen(false)}>Cancelar</Button><Button onClick={handleSave} disabled={saving}>{saving ? 'Guardando...' : 'Guardar'}</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={tipoOpen} onOpenChange={setTipoOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader><DialogTitle>Crear tipo de incidencia</DialogTitle></DialogHeader>
+          <Input value={nuevoTipo} onChange={(e) => setNuevoTipo(e.target.value)} placeholder="Nombre del tipo" />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setTipoOpen(false)}>Cancelar</Button>
+            <Button onClick={async () => {
+              if (!nuevoTipo.trim()) return
+              const res = await fetch('/api/tipos-incidencia', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nombre: nuevoTipo.trim() }) })
+              const json = await res.json()
+              if (json.data) setTiposIncidencia((p) => [...p, json.data])
+              setNuevoTipo('')
+              setTipoOpen(false)
+            }}>Guardar</Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
