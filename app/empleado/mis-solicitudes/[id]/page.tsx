@@ -17,6 +17,89 @@ import type { ToothStatus } from '@/components/dentcore/solicitud/solicitud-type
 
 const GARANTIA_VIEWER_URL = (solicitudId: string) => `/api/garantia?solicitud_id=${encodeURIComponent(solicitudId)}`
 
+const EXT_IMAGEN = /\.(png|jpe?g|gif|webp|svg|bmp|avif)(\?|#|$)/i
+const REGEX_URL = /^(https?:|data:|blob:|\/)/i
+
+/** Acepta: array, string JSON, literal de Postgres {a,b}, string suelto u objeto. */
+function normalizarArchivos(valor: unknown): unknown[] {
+  if (!valor) return []
+  if (Array.isArray(valor)) return valor
+  if (typeof valor === 'string') {
+    const t = valor.trim()
+    if (!t) return []
+    if (t.startsWith('[') || t.startsWith('{"')) {
+      try {
+        const p = JSON.parse(t)
+        return Array.isArray(p) ? p : [p]
+      } catch {
+        /* sigue */
+      }
+    }
+    if (t.startsWith('{') && t.endsWith('}')) {
+      return t
+        .slice(1, -1)
+        .split(',')
+        .map((s) => s.trim().replace(/^"|"$/g, ''))
+        .filter(Boolean)
+    }
+    return [t]
+  }
+  if (typeof valor === 'object') return [valor]
+  return []
+}
+
+interface AdjuntoInfo {
+  nombre: string
+  href: string | null
+  ruta: string | null
+  esImagen: boolean
+}
+
+/**
+ * Formatos soportados de cada elemento:
+ *  - "nombre|url"  - "url"  - "ruta/en/bucket.png"  - "data:image/png;base64,..."
+ *  - { nombre | name, url | href | path }
+ */
+function parseAdjunto(archivo: unknown, idx: number): AdjuntoInfo {
+  let nombre = ''
+  let valor = ''
+
+  if (archivo && typeof archivo === 'object') {
+    const a = archivo as Record<string, any>
+    nombre = String(a.nombre ?? a.name ?? a.filename ?? '').trim()
+    valor = String(a.url ?? a.href ?? a.publicUrl ?? a.path ?? a.ruta ?? '').trim()
+  } else {
+    const raw = String(archivo ?? '').trim()
+    const pipe = raw.indexOf('|')
+    if (pipe > -1) {
+      nombre = raw.slice(0, pipe).trim()
+      valor = raw.slice(pipe + 1).trim()
+    } else {
+      valor = raw
+    }
+  }
+
+  const esUrl = REGEX_URL.test(valor)
+
+  if (!nombre && valor && !/^data:/i.test(valor)) {
+    try {
+      nombre = decodeURIComponent(new URL(valor, 'http://x').pathname.split('/').pop() || '')
+    } catch {
+      nombre = valor.split('/').pop() || valor
+    }
+  }
+  if (!nombre) nombre = `Archivo ${idx + 1}`
+
+  const esImagen = /^data:image\//i.test(valor) || EXT_IMAGEN.test(nombre) || EXT_IMAGEN.test(valor)
+
+  return {
+    nombre,
+    href: esUrl ? valor : null,
+    ruta: !esUrl && valor ? valor.replace(/^\/+/, '') : null,
+    esImagen,
+  }
+}
+
 function isViewableDocument(nombreArchivo?: string | null, tipoMime?: string | null) {
   if (!nombreArchivo && !tipoMime) return false
   const source = `${nombreArchivo || ''} ${tipoMime || ''}`.toLowerCase()
@@ -819,6 +902,8 @@ export default function EmpleadoSolicitudDetallePage() {
 
   const selectedTeeth = useMemo(() => parseDientes(solicitud?.dientes), [solicitud?.dientes])
 
+  const adjuntos = useMemo(() => normalizarArchivos(solicitud?.archivos).map((a, i) => parseAdjunto(a, i)), [solicitud?.archivos])
+
   const estadoOpt = ESTADO_OPTIONS.find((e) => e.value === solicitud?.estado)
   const prioridadOpt = PRIORIDAD_OPTIONS.find((p) => p.value === solicitud?.prioridad)
   const faseSeleccionada = useMemo(() => {
@@ -1356,27 +1441,39 @@ export default function EmpleadoSolicitudDetallePage() {
             </div>
             <div className="sm:col-span-2">
               <span className="text-xs text-muted-foreground">Documentos adjuntos</span>
-              {Array.isArray(solicitud.archivos) && solicitud.archivos.length > 0 ? (
-                <div className="mt-2 grid gap-2">
-                  {solicitud.archivos.map((archivo: string, idx: number) => {
-                    const [nombre, url] = archivo.includes('|') ? archivo.split('|') : [archivo, null]
-                    const isViewable = isViewableDocument(nombre, null)
-                    return (
-                      <div key={idx} className="flex items-center justify-between rounded-md border border-border px-3 py-2">
-                        <span className="text-sm text-foreground">{nombre || archivo}</span>
-                        {url && (
-                          <a
-                            href={url}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="text-xs text-accent underline"
-                          >
-                            {isViewable ? 'Ver' : 'Descargar'}
-                          </a>
-                        )}
-                      </div>
-                    )
-                  })}
+              {adjuntos.length > 0 ? (
+                <div className="mt-2 grid grid-cols-2 gap-3 sm:grid-cols-3">
+                  {adjuntos.map((adj, idx) => (
+                    <div key={idx} className="group relative">
+                      {adj.esImagen && adj.href ? (
+                        <a href={adj.href} target="_blank" rel="noreferrer" className="block">
+                          <div className="overflow-hidden rounded-lg border border-border bg-secondary/30">
+                            <img
+                              src={adj.href}
+                              alt={adj.nombre}
+                              className="h-32 w-full object-cover transition-transform group-hover:scale-105"
+                            />
+                          </div>
+                          <p className="mt-1 truncate text-xs text-primary underline">{adj.nombre}</p>
+                        </a>
+                      ) : adj.href ? (
+                        <a
+                          href={adj.href}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="flex items-center gap-2 rounded-lg border border-border bg-secondary/30 p-3 transition-colors hover:bg-secondary/50"
+                        >
+                          <FileText className="size-5 shrink-0 text-muted-foreground" />
+                          <span className="truncate text-xs text-primary underline">{adj.nombre}</span>
+                        </a>
+                      ) : (
+                        <div className="flex items-center gap-2 rounded-lg border border-border bg-secondary/30 p-3">
+                          <FileText className="size-5 shrink-0 text-muted-foreground" />
+                          <span className="truncate text-xs text-muted-foreground">{adj.nombre}</span>
+                        </div>
+                      )}
+                    </div>
+                  ))}
                 </div>
               ) : (
                 <span className="text-sm text-muted-foreground">Sin documentos adjuntos</span>

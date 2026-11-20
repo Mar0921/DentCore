@@ -75,6 +75,7 @@ const adminNavItems = [
   { label: 'Clientes', href: '/laboratorio/clientes', active: false },
   { label: 'Análisis', href: '/laboratorio/analisis', active: false },
   { label: 'Productos', href: '/laboratorio/productos', active: false },
+  { label: 'Materiales', href: '/laboratorio/materiales', active: false },
   { label: 'Empleados', href: '/laboratorio/empleados', active: false },
   { label: 'Solicitudes', href: '/laboratorio/solicitudes', active: false },
 ]

@@ -86,10 +86,41 @@ export function ZonaDentalChart({ onClear, onSaveDrawing }: ZonaDentalChartProps
     onClear()
   }
 
-  const handleSave = () => {
+const handleSave = () => {
     const canvas = canvasRef.current
     if (!canvas || !onSaveDrawing) return
-    onSaveDrawing(canvas.toDataURL('image/png'))
+
+    // Combine SVG background with canvas drawing
+    const svg = containerRef.current?.querySelector('svg')
+    if (svg) {
+      const svgData = new XMLSerializer().serializeToString(svg)
+      const svgBlob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' })
+      const svgUrl = URL.createObjectURL(svgBlob)
+      const img = new Image()
+      img.onload = () => {
+        // Create a temporary canvas to combine background + drawing
+        const tempCanvas = document.createElement('canvas')
+        tempCanvas.width = canvas.width
+        tempCanvas.height = canvas.height
+        const ctx = tempCanvas.getContext('2d')
+        if (ctx) {
+          // Draw SVG background first
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
+          // Draw the original canvas (red drawing) on top
+          ctx.drawImage(canvas, 0, 0)
+          URL.revokeObjectURL(svgUrl)
+          onSaveDrawing(tempCanvas.toDataURL('image/png'))
+        }
+      }
+      img.onerror = () => {
+        URL.revokeObjectURL(svgUrl)
+        // Fallback: save canvas only
+        onSaveDrawing(canvas.toDataURL('image/png'))
+      }
+      img.src = svgUrl
+    } else {
+      onSaveDrawing(canvas.toDataURL('image/png'))
+    }
   }
 
   return (

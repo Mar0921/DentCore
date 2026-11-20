@@ -149,6 +149,7 @@ export function LoginForm() {
       localStorage.setItem('labUserName', employee.nombre?.trim() || correo.split('@')[0])
       if (laboratorio) {
         localStorage.setItem('labName', laboratorio.nombre)
+        localStorage.setItem('labId', laboratorio.id)
       }
 
       try {
