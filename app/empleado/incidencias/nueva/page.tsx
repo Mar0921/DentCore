@@ -74,6 +74,7 @@ export default function NuevaIncidenciaEmpleadoPage() {
   const [solicitudes, setSolicitudes] = useState<Solicitud[]>([])
   const [fasesDisponibles, setFasesDisponibles] = useState<FaseLite[]>([])
   const [tiposIncidencia, setTiposIncidencia] = useState<string[]>([])
+  const [laboratorioId, setLaboratorioId] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [cargandoResponsable, setCargandoResponsable] = useState(true)
 
@@ -91,6 +92,7 @@ export default function NuevaIncidenciaEmpleadoPage() {
   useEffect(() => {
     void cargarSolicitudes()
     void cargarResponsableSesion()
+    void resolverLaboratorioYTipos()
   }, [])
 
   useEffect(() => {
@@ -103,12 +105,48 @@ export default function NuevaIncidenciaEmpleadoPage() {
     void cargarFases(formData.solicitud_id)
   }, [formData.solicitud_id, solicitudes])
 
-  useEffect(() => {
-    const sol = solicitudes.find((s) => String(s.id) === formData.solicitud_id)
-    const labId = sol?.laboratorio_id
-    const url = labId ? `/api/tipos-incidencia?laboratorio_id=${labId}` : '/api/tipos-incidencia'
-    fetch(url).then((r) => r.json()).then((j) => setTiposIncidencia((j.data || []).map((t: any) => t.nombre))).catch(() => setTiposIncidencia([]))
-  }, [formData.solicitud_id, solicitudes])
+  async function resolverLaboratorioYTipos() {
+    try {
+      const saved = localStorage.getItem('labId')
+      if (saved) {
+        setLaboratorioId(saved)
+        await cargarTipos(saved)
+        return
+      }
+      const { email } = obtenerUsuarioLocal()
+      if (email) {
+        const { data: emp } = await supabase
+          .from('empleados')
+          .select('laboratorio_id')
+          .ilike('email', email)
+          .maybeSingle()
+        if (emp?.laboratorio_id) {
+          setLaboratorioId(emp.laboratorio_id)
+          localStorage.setItem('labId', emp.laboratorio_id)
+          await cargarTipos(emp.laboratorio_id)
+          return
+        }
+      }
+      const { data: labs } = await supabase.from('laboratorio').select('id').limit(1)
+      if (labs && labs.length > 0) {
+        setLaboratorioId(labs[0].id)
+        localStorage.setItem('labId', labs[0].id)
+        await cargarTipos(labs[0].id)
+      }
+    } catch {
+      // silencioso
+    }
+  }
+
+  async function cargarTipos(labId: string) {
+    try {
+      const res = await fetch(`/api/tipos-incidencia?laboratorio_id=${labId}`)
+      const json = await res.json()
+      setTiposIncidencia((json.data || []).map((t: any) => t.nombre))
+    } catch {
+      setTiposIncidencia([])
+    }
+  }
 
   // Obtiene el nombre del usuario que inició sesión (desde localStorage).
   async function cargarResponsableSesion(): Promise<string> {

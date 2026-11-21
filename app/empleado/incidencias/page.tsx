@@ -23,14 +23,24 @@ interface Incidencia {
   fecha_creacion: string | null
 }
 
+interface TipoIncidencia {
+  id: string
+  nombre: string
+  laboratorio_id: string | null
+}
+
 export default function EmpleadoIncidenciasPage() {
   const router = useRouter()
   const [incidencias, setIncidencias] = useState<Incidencia[]>([])
+  const [tiposIncidencia, setTiposIncidencia] = useState<TipoIncidencia[]>([])
   const [loading, setLoading] = useState(true)
+  const [loadingTipos, setLoadingTipos] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [laboratorioId, setLaboratorioId] = useState<string | null>(null)
 
   useEffect(() => {
     cargarIncidencias()
+    cargarTiposIncidencia()
   }, [])
 
   async function cargarIncidencias() {
@@ -60,6 +70,54 @@ export default function EmpleadoIncidenciasPage() {
     }
   }
 
+  async function cargarTiposIncidencia() {
+    setLoadingTipos(true)
+    try {
+      const savedLabId = localStorage.getItem('labId')
+      if (savedLabId) {
+        setLaboratorioId(savedLabId)
+        await fetchTipos(savedLabId)
+        return
+      }
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user?.email) {
+        const { data: emp } = await supabase
+          .from('empleados')
+          .select('laboratorio_id')
+          .eq('email', user.email)
+          .maybeSingle()
+        if (emp?.laboratorio_id) {
+          setLaboratorioId(emp.laboratorio_id)
+          localStorage.setItem('labId', emp.laboratorio_id)
+          await fetchTipos(emp.laboratorio_id)
+          return
+        }
+        const { data: labs } = await supabase.from('laboratorio').select('id').limit(1)
+        if (labs && labs.length > 0) {
+          setLaboratorioId(labs[0].id)
+          localStorage.setItem('labId', labs[0].id)
+          await fetchTipos(labs[0].id)
+        }
+      }
+    } catch {
+      // silencioso
+    } finally {
+      setLoadingTipos(false)
+    }
+  }
+
+  async function fetchTipos(labId: string) {
+    try {
+      const res = await fetch(`/api/tipos-incidencia?laboratorio_id=${labId}`)
+      if (res.ok) {
+        const result = await res.json()
+        setTiposIncidencia(Array.isArray(result?.data) ? result.data : [])
+      }
+    } catch {
+      // silencioso
+    }
+  }
+
   function formatFecha(fecha?: string | null) {
     if (!fecha) return '—'
     try {
@@ -83,6 +141,33 @@ export default function EmpleadoIncidenciasPage() {
           </Button>
         </div>
 
+        {/* Tipos de incidencia registrados por el laboratorio */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Tipos de incidencia del laboratorio</CardTitle>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Tipos disponibles para registrar nuevas incidencias
+            </p>
+          </CardHeader>
+          <CardContent>
+            {loadingTipos ? (
+              <p className="text-sm text-muted-foreground">Cargando tipos...</p>
+            ) : tiposIncidencia.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                No hay tipos de incidencia registrados por el laboratorio
+              </p>
+            ) : (
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+                {tiposIncidencia.map((t) => (
+                  <div key={t.id} className="rounded border border-border p-3 text-center">
+                    <span className="block text-xs font-medium text-foreground">{t.nombre}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Listado de incidencias</CardTitle>
@@ -101,12 +186,12 @@ export default function EmpleadoIncidenciasPage() {
                     <tr className="border-b border-border">
                        <th className="text-left py-2 px-2 text-xs text-muted-foreground font-medium">Código</th>
                        <th className="text-left py-2 px-2 text-xs text-muted-foreground font-medium">Solicitud</th>
-                      <th className="text-left py-2 px-2 text-xs text-muted-foreground font-medium">Tipo</th>
-                      <th className="text-left py-2 px-2 text-xs text-muted-foreground font-medium">Fecha</th>
-                      <th className="text-left py-2 px-2 text-xs text-muted-foreground font-medium">Hora</th>
-                      <th className="text-left py-2 px-2 text-xs text-muted-foreground font-medium">Estado</th>
-                      <th className="text-left py-2 px-2 text-xs text-muted-foreground font-medium">Responsable</th>
-                      <th className="text-left py-2 px-2 text-xs text-muted-foreground font-medium">Acciones</th>
+                       <th className="text-left py-2 px-2 text-xs text-muted-foreground font-medium">Tipo</th>
+                       <th className="text-left py-2 px-2 text-xs text-muted-foreground font-medium">Fecha</th>
+                       <th className="text-left py-2 px-2 text-xs text-muted-foreground font-medium">Hora</th>
+                       <th className="text-left py-2 px-2 text-xs text-muted-foreground font-medium">Estado</th>
+                       <th className="text-left py-2 px-2 text-xs text-muted-foreground font-medium">Responsable</th>
+                       <th className="text-left py-2 px-2 text-xs text-muted-foreground font-medium">Acciones</th>
                     </tr>
                   </thead>
                   <tbody>

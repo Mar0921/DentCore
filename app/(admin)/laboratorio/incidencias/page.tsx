@@ -106,12 +106,44 @@ export default function IncidenciasPage() {
   const [medidaForm, setMedidaForm] = useState({ estado: 'nueva', fecha_resolucion: '', responsable: '', medidas_tomadas: '' })
   const [fasesDisponibles, setFasesDisponibles] = useState<FaseLite[]>([])
   const [tiposIncidencia, setTiposIncidencia] = useState<TipoIncidencia[]>([])
+  const [laboratorioId, setLaboratorioId] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
     fetchData()
     loadEmpleados()
+    resolverLaboratorio()
   }, [])
+
+  async function resolverLaboratorio() {
+    try {
+      const saved = localStorage.getItem('labId')
+      if (saved) {
+        setLaboratorioId(saved)
+        return
+      }
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user?.email) {
+        const { data: emp } = await supabase
+          .from('empleados')
+          .select('laboratorio_id')
+          .eq('email', user.email)
+          .maybeSingle()
+        if (emp?.laboratorio_id) {
+          setLaboratorioId(emp.laboratorio_id)
+          localStorage.setItem('labId', emp.laboratorio_id)
+          return
+        }
+      }
+      const { data: labs } = await supabase.from('laboratorio').select('id').limit(1)
+      if (labs && labs.length > 0) {
+        setLaboratorioId(labs[0].id)
+        localStorage.setItem('labId', labs[0].id)
+      }
+    } catch {
+      // silencioso
+    }
+  }
 
   // Solicitud con la que se está trabajando en el diálogo abierto (nueva o edición)
   const solicitudActivaId = editOpen ? editForm?.solicitud_id || '' : open ? form.solicitud_id : ''
@@ -186,6 +218,25 @@ export default function IncidenciasPage() {
     }
   }, [solicitudActivaId, solicitudes])
 
+  // Recargar tipos cuando se resuelve el laboratorio
+  useEffect(() => {
+    if (!laboratorioId) return
+    let cancelled = false
+    async function loadTipos() {
+      try {
+        const res = await fetch(`/api/tipos-incidencia?laboratorio_id=${laboratorioId}`)
+        if (res.ok) {
+          const json = await res.json()
+          if (!cancelled && json.data) setTiposIncidencia(json.data)
+        }
+      } catch {
+        // silencioso
+      }
+    }
+    loadTipos()
+    return () => { cancelled = true }
+  }, [laboratorioId])
+
   async function loadEmpleados() {
     try {
       const { data } = await supabase.from('empleados').select('id, nombre').order('nombre')
@@ -196,13 +247,11 @@ export default function IncidenciasPage() {
   async function fetchData() {
     setLoading(true)
     try {
-   const [incRes, solRes, tiposRes] = await Promise.all([fetch('/api/incidencias'), fetch('/api/solicitudes'), fetch('/api/tipos-incidencia')])
-       const incJson = await incRes.json()
-       const solJson = await solRes.json()
-       const tiposJson = await tiposRes.json()
-       if (incJson.data) setIncidencias(incJson.data)
-       if (solJson.data) setSolicitudes(solJson.data)
-       if (tiposJson.data) setTiposIncidencia(tiposJson.data)
+      const [incRes, solRes] = await Promise.all([fetch('/api/incidencias'), fetch('/api/solicitudes')])
+      const incJson = await incRes.json()
+      const solJson = await solRes.json()
+      if (incJson.data) setIncidencias(incJson.data)
+      if (solJson.data) setSolicitudes(solJson.data)
     } catch (e) {
       console.error(e)
     } finally {
@@ -532,7 +581,9 @@ export default function IncidenciasPage() {
             <Button variant="outline" onClick={() => setTipoOpen(false)}>Cancelar</Button>
             <Button onClick={async () => {
               if (!nuevoTipo.trim()) return
-              const res = await fetch('/api/tipos-incidencia', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nombre: nuevoTipo.trim() }) })
+              const body: any = { nombre: nuevoTipo.trim() }
+              if (laboratorioId) body.laboratorio_id = laboratorioId
+              const res = await fetch('/api/tipos-incidencia', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
               const json = await res.json()
               if (json.data) setTiposIncidencia((p) => [...p, json.data])
               setNuevoTipo('')
