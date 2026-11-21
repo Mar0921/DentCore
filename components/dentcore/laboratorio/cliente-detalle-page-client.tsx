@@ -256,7 +256,7 @@ async function saveCliente() {
                 <tbody>
                   {solicitudes.map((sol) => (
                     <tr key={sol.id} className="border-b hover:bg-muted/50">
-                      <td className="p-2 text-sm font-medium">{sol.codigo || sol.id.slice(0, 8)}</td>
+                      <td className="p-2 text-sm font-medium">{sol.codigo_trazabilidad || sol.codigo || sol.id.slice(0, 8)}</td>
                       <td className="p-2 text-sm">{sol.paciente_nombre || sol.nombre_paciente || sol.paciente || '—'}</td>
                       <td className="p-2 text-sm">{(sol.fecha_creacion || sol.created_at || sol.fecha) ? new Date(sol.fecha_creacion || sol.created_at || sol.fecha).toLocaleDateString('es-CO') : '—'}</td>
                       <td className="p-2 text-sm">
@@ -311,7 +311,7 @@ async function saveCliente() {
                   <tr key={s.id || i}>
                     <td className="px-3 py-2">{i + 1}</td>
                     <td className="px-3 py-2">{(s.productos || s.servicio || s.tipo_trabajo || '—').toString().replace(/\s*a\s*\$[\d.,]+/gi, '')}</td>
-                    <td className="px-3 py-2">#{s.codigo || s.numero || s.id}</td>
+                    <td className="px-3 py-2">#{s.codigo_trazabilidad || s.codigo || s.numero || s.id}</td>
                     <td className="px-3 py-2">{(s.fecha_creacion || s.created_at || s.fecha) ? new Date(s.fecha_creacion || s.created_at || s.fecha).toLocaleDateString('es-CO') : '—'}</td>
                     <td className="px-3 py-2">{s.estado || 'en proceso'}</td>
                     <td className="px-3 py-2">{s.estado_pago || 'pendientePago'}</td>

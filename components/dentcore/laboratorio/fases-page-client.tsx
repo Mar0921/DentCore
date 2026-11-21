@@ -27,17 +27,35 @@ export function FasesPageClient({ modo = 'admin' }: { modo?: 'admin' | 'empleado
   useEffect(() => {
     loadLaboratorio().then((id) => {
       loadFases(id)
-      loadEmpleados()
+      loadEmpleados(id)
     })
   }, [])
 
   async function loadLaboratorio() {
     try {
-      const { data } = await supabase.from('laboratorio').select('id, nombre').limit(1)
-      if (data && data.length > 0) {
-        setLabId(data[0].id)
-        setLabNombre(data[0].nombre || '')
-        return data[0].id
+      const { data: { user } } = await supabase.auth.getUser()
+      let email = user?.email || (typeof window !== 'undefined' ? localStorage.getItem('labUserEmail') : null)
+      let lab: any = null
+      if (email) {
+        const { data: labs } = await supabase.from('laboratorio').select('id, nombre').eq('email', email).limit(1)
+        lab = labs?.[0]
+        if (!lab) {
+          const { data: emps } = await supabase.from('empleados').select('laboratorio_id').eq('email', email).limit(1)
+          const labIdEmp = emps?.[0]?.laboratorio_id
+          if (labIdEmp) {
+            const { data: labs2 } = await supabase.from('laboratorio').select('id, nombre').eq('id', labIdEmp).limit(1)
+            lab = labs2?.[0]
+          }
+        }
+      }
+      if (!lab) {
+        const { data } = await supabase.from('laboratorio').select('id, nombre').limit(1)
+        lab = data?.[0]
+      }
+      if (lab) {
+        setLabId(lab.id)
+        setLabNombre(lab.nombre || '')
+        return lab.id
       }
     } catch (err) {
       console.error('Error:', err)
@@ -100,14 +118,32 @@ export function FasesPageClient({ modo = 'admin' }: { modo?: 'admin' | 'empleado
     setLoading(false)
   }
 
-  async function loadEmpleados() {
+  async function loadEmpleados(labIdParam: string | null) {
     setLoadingEmpleados(true)
     try {
-      const { data, error } = await supabase
+      let query = supabase
         .from('empleados')
-        .select('id, nombre, email, rol')
+        .select('id, nombre, email, rol, departamento, telefono, activo, laboratorio_id')
         .order('nombre', { ascending: true })
-      if (!error && data) setEmpleados(data as Empleado[])
+      if (labIdParam) {
+        query = query.eq('laboratorio_id', labIdParam)
+      }
+      const { data, error } = await query
+      if (!error && data) {
+        setEmpleados(data as Empleado[])
+      } else if (error) {
+        const msg = String(error.message || '')
+        if (msg.includes('laboratorio_id')) {
+          // Column doesn't exist yet — fall back to loading all employees
+          const fallback = await supabase
+            .from('empleados')
+            .select('id, nombre, email, rol, departamento, telefono, activo')
+            .order('nombre', { ascending: true })
+          if (fallback.data) setEmpleados(fallback.data as Empleado[])
+        } else {
+          console.error('Error cargando empleados:', error)
+        }
+      }
     } catch (err) {
       console.error('Error:', err)
     } finally {

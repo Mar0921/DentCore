@@ -119,7 +119,6 @@ const laboratorioItems = [
   { label: 'Departamentos', icon: Building2, href: '/laboratorio/departamentos', activePrefix: '/laboratorio/departamentos' },
   { label: 'Fases', icon: GitBranch, href: '/laboratorio/fases', activePrefix: '/laboratorio/fases' },
   { label: 'Incidencias y calidad', icon: AlertTriangle, href: '/laboratorio/incidencias', activePrefix: '/laboratorio/incidencias' },
-  { label: 'CRM', icon: MessageCircleQuestion, href: '/laboratorio/crm', activePrefix: '/laboratorio/crm' },
   { label: 'Archivos del laboratorio', icon: FolderOpen, href: '/laboratorio/archivos', activePrefix: '/laboratorio/archivos' },
   { label: 'Evidencias', icon: Image, href: '/laboratorio/evidencias', activePrefix: '/laboratorio/evidencias' },
   { label: 'Firmas', icon: PenTool, href: '/laboratorio/firmas', activePrefix: '/laboratorio/firmas' },

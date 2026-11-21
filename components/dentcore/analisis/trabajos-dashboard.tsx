@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
 import { MoreHorizontal, Eye, Download, ChevronDown } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -18,7 +18,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { analisisTrabajos } from '@/data/analisis-trabajos-mock'
-import type { AnalisisTrabajosData } from '@/types/analisis-trabajos'
+import type { AnalisisTrabajosData, EntradaTrabajoMensual } from '@/types/analisis-trabajos'
 import { BarChart, DonutChart, CHART_COLORS, fmt } from '../analisis/charts'
 
 const tabs = [
@@ -39,6 +39,8 @@ function TrabajosDashboard({ datos }: { datos?: AnalisisTrabajosData }) {
     const match = tabs.find((t) => pathname.startsWith(basePrefix + t.href.replace('/analisis/trabajos', '')))
     return match?.key ?? 'resumen'
   })
+  const [entradasReales, setEntradasReales] = useState<EntradaTrabajoMensual[] | null>(null)
+  const [loading, setLoading] = useState(true)
 
   const handleTabChange = (newTab: Tab) => {
     setTab(newTab)
@@ -48,7 +50,30 @@ function TrabajosDashboard({ datos }: { datos?: AnalisisTrabajosData }) {
     }
   }
 
+  useEffect(() => {
+    let cancelled = false
+    async function cargarEntradas() {
+      setLoading(true)
+      try {
+        const res = await fetch('/api/analisis/trabajos', { cache: 'no-store' })
+        if (res.ok) {
+          const json = await res.json()
+          if (!cancelled && json.data?.entradasMensuales) {
+            setEntradasReales(json.data.entradasMensuales)
+          }
+        }
+      } catch {
+        // silencioso: se usará el mock
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+    cargarEntradas()
+    return () => { cancelled = true }
+  }, [])
+
   const data = datos ?? analisisTrabajos
+  const entradasMensuales = loading ? data.entradasMensuales : (entradasReales ?? data.entradasMensuales)
 
   const clientChartData = data.clientes.map((c, i) => ({
     nombre: c.nombre,
@@ -121,7 +146,7 @@ function TrabajosDashboard({ datos }: { datos?: AnalisisTrabajosData }) {
             </CardHeader>
             <CardContent>
               <BarChart
-                data={data.entradasMensuales}
+                data={entradasMensuales}
                 keys={['pendientes', 'entregados', 'otros']}
                 colors={estadoColors}
               />
@@ -223,7 +248,7 @@ function TrabajosDashboard({ datos }: { datos?: AnalisisTrabajosData }) {
           </CardHeader>
           <CardContent>
             <BarChart
-              data={data.entradasMensuales}
+              data={entradasMensuales}
               keys={['pendientes', 'entregados', 'otros']}
               colors={estadoColors}
               height={260}
