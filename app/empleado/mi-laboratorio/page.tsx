@@ -1,13 +1,14 @@
 'use client'
 
 import { useState } from 'react'
-import { Package, Building2 } from 'lucide-react'
+import { Package, Building2, ClipboardList } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { AppShell } from '@/components/dentcore/app-shell'
 import { EmpleadosProductosClient } from '@/components/dentcore/laboratorio/empleados-productos-client'
 import { DepartamentosPageClient } from '@/components/dentcore/laboratorio/departamentos-page-client'
+import { MaterialesPageClient } from '@/components/dentcore/laboratorio/materiales-page-client'
 
-type LaboratorioTab = 'productos' | 'departamentos'
+type LaboratorioTab = 'productos' | 'departamentos' | 'materiales'
 
 export default function EmpleadoLaboratorioPage() {
   const [tab, setTab] = useState<LaboratorioTab>('productos')
@@ -32,10 +33,19 @@ export default function EmpleadoLaboratorioPage() {
             <Building2 className="size-4" />
             Departamentos
           </Button>
+          <Button
+            variant={tab === 'materiales' ? 'default' : 'outline'}
+            className="gap-2"
+            onClick={() => setTab('materiales')}
+          >
+            <ClipboardList className="size-4" />
+            Materiales
+          </Button>
         </div>
 
         {tab === 'productos' && <EmpleadosProductosClient />}
         {tab === 'departamentos' && <DepartamentosPageClient empleado={true} />}
+        {tab === 'materiales' && <MaterialesPageClient empleado={true} />}
       </div>
     </AppShell>
   )

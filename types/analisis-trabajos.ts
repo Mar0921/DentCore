@@ -3,6 +3,7 @@ export interface EntradaTrabajoMensual {
   pendientes: number
   entregados: number
   otros: number
+  [key: string]: number | string
 }
 
 export interface ClienteTrabajo {

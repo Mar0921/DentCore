@@ -159,7 +159,7 @@ const secciones: { titulo: string; campos: Field[] }[] = [
 
 const COLS = 10
 
-export function MaterialesPageClient() {
+export function MaterialesPageClient({ empleado }: { empleado?: boolean }) {
   const [laboratorioId, setLaboratorioId] = useState<string | null>(null)
   const [form, setForm] = useState(emptyForm)
   const [materiales, setMateriales] = useState<any[]>([])
@@ -398,6 +398,7 @@ export function MaterialesPageClient() {
       </div>
 
       {/* Formulario Nuevo Material */}
+      {!empleado && (
       <Card>
         <CardHeader><CardTitle>Nuevo Material</CardTitle></CardHeader>
         <CardContent>
@@ -437,6 +438,7 @@ export function MaterialesPageClient() {
           </form>
         </CardContent>
       </Card>
+      )}
 
       {/* Materiales registrados */}
       <Card>
@@ -517,16 +519,21 @@ export function MaterialesPageClient() {
                       </td>
                       <td className="p-2">
                         <div className="flex gap-1 justify-end">
-                          {isEditing ? (
+                          {!isEditing && (
+                            <>
+                              <Button variant="ghost" size="icon" onClick={() => descargarFormato(m)} title="Descargar formato SIG-GC-FOR-006"><Download className="size-4" /></Button>
+                              {!empleado && (
+                                <>
+                                  <Button variant="ghost" size="icon" onClick={() => startEdit(m)} title="Editar"><Edit2 className="size-4" /></Button>
+                                  <Button variant="ghost" size="icon" onClick={() => deleteMaterial(m.id)} title="Eliminar"><Trash2 className="size-4" /></Button>
+                                </>
+                              )}
+                            </>
+                          )}
+                          {isEditing && !empleado && (
                             <>
                               <Button variant="ghost" size="icon" onClick={() => saveEdit(m)} title="Guardar"><Save className="size-4" /></Button>
                               <Button variant="ghost" size="icon" onClick={cancelEdit} title="Cancelar"><X className="size-4" /></Button>
-                            </>
-                          ) : (
-                            <>
-                              <Button variant="ghost" size="icon" onClick={() => descargarFormato(m)} title="Descargar formato SIG-GC-FOR-006"><Download className="size-4" /></Button>
-                              <Button variant="ghost" size="icon" onClick={() => startEdit(m)} title="Editar"><Edit2 className="size-4" /></Button>
-                              <Button variant="ghost" size="icon" onClick={() => deleteMaterial(m.id)} title="Eliminar"><Trash2 className="size-4" /></Button>
                             </>
                           )}
                         </div>

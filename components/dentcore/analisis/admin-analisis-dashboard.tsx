@@ -25,8 +25,8 @@ import { ControlAvanzadoDashboard } from './control-avanzado-dashboard'
 import { analisisVentas } from '@/data/analisis-ventas-mock'
 
 const tabs = [
-  { key: 'resumen', label: 'Resumen', href: '/laboratorio/analisis/ventas' },
   { key: 'trabajos', label: 'Trabajos', href: '/laboratorio/analisis/trabajos' },
+  { key: 'resumen', label: 'Ventas', href: '/laboratorio/analisis/ventas' },
   { key: 'productividad', label: 'Productividad', href: '/laboratorio/analisis/productividad' },
   { key: 'calidad', label: 'Calidad', href: '/laboratorio/analisis/calidad' },
   { key: 'control', label: 'Control avanzado', href: '/laboratorio/analisis/control-avanzado' },
@@ -39,7 +39,7 @@ export function AdminAnalisisDashboard() {
   const router = useRouter()
   const [tab, setTab] = useState<Tab>(() => {
     const match = tabs.find((t) => pathname.startsWith(t.href))
-    return match?.key ?? 'resumen'
+    return match?.key ?? 'trabajos'
   })
 
   const handleTabChange = (newTab: Tab) => {
@@ -100,24 +100,9 @@ export function AdminAnalisisDashboard() {
         ))}
       </div>
 
-      {tab === 'resumen' && <VentasDashboard />}
+      {tab === 'trabajos' && <TrabajosDashboard />}
 
-      {tab === 'trabajos' && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Análisis de trabajos</CardTitle>
-            <p className="mt-1 text-xs text-muted-foreground">Volumen y estados de trabajos</p>
-          </CardHeader>
-          <CardContent>
-            <div className="px-6 py-12 text-center">
-              <p className="text-sm font-medium text-primary">Próximamente</p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Este módulo se encuentra en desarrollo.
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+      {tab === 'resumen' && <VentasDashboard />}
 
       {tab === 'productividad' && <ProductividadDashboard />}
 

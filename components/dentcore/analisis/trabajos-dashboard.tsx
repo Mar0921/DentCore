@@ -41,6 +41,12 @@ function TrabajosDashboard({ datos }: { datos?: AnalisisTrabajosData }) {
   })
   const [entradasReales, setEntradasReales] = useState<EntradaTrabajoMensual[] | null>(null)
   const [loading, setLoading] = useState(true)
+  const [clientesReales, setClientesReales] = useState<{ codigo: string; nombre: string; trabajosAnio: number; diferencia: number }[] | null>(null)
+  const [totalClientes, setTotalClientes] = useState<number | null>(null)
+  const [productosReales, setProductosReales] = useState<{ nombre: string; unidadesAnio: number; diferencia: number }[] | null>(null)
+  const [totalProductos, setTotalProductos] = useState<number | null>(null)
+  const [metricasReales, setMetricasReales] = useState<{ trabajosEsteMes: number; variacionEsteMes: number; trabajosEsteAnio: number; variacionEsteAnio: number } | null>(null)
+  const [trimestresReales, setTrimestresReales] = useState<{ trabajos: number; variacion: number }[] | null>(null)
 
   const handleTabChange = (newTab: Tab) => {
     setTab(newTab)
@@ -55,11 +61,43 @@ function TrabajosDashboard({ datos }: { datos?: AnalisisTrabajosData }) {
     async function cargarEntradas() {
       setLoading(true)
       try {
-        const res = await fetch('/api/analisis/trabajos', { cache: 'no-store' })
-        if (res.ok) {
-          const json = await res.json()
+        const [resEntradas, resClientes, resProductos, resMetricas, resTrimestres] = await Promise.all([
+          fetch('/api/analisis/trabajos', { cache: 'no-store' }),
+          fetch('/api/analisis/trabajos/clientes', { cache: 'no-store' }),
+          fetch('/api/analisis/trabajos/productos', { cache: 'no-store' }),
+          fetch('/api/analisis/trabajos/metricas', { cache: 'no-store' }),
+          fetch('/api/analisis/trabajos/trimestres', { cache: 'no-store' }),
+        ])
+        if (resEntradas.ok) {
+          const json = await resEntradas.json()
           if (!cancelled && json.data?.entradasMensuales) {
             setEntradasReales(json.data.entradasMensuales)
+          }
+        }
+        if (resClientes.ok) {
+          const json = await resClientes.json()
+          if (!cancelled && json.data?.clientes) {
+            setClientesReales(json.data.clientes)
+            setTotalClientes(json.data.total ?? 0)
+          }
+        }
+        if (resProductos.ok) {
+          const json = await resProductos.json()
+          if (!cancelled && json.data?.productos) {
+            setProductosReales(json.data.productos)
+            setTotalProductos(json.data.total ?? 0)
+          }
+        }
+        if (resMetricas.ok) {
+          const json = await resMetricas.json()
+          if (!cancelled && json.data) {
+            setMetricasReales(json.data)
+          }
+        }
+        if (resTrimestres.ok) {
+          const json = await resTrimestres.json()
+          if (!cancelled && json.data?.trimestres) {
+            setTrimestresReales(json.data.trimestres)
           }
         }
       } catch {
@@ -74,14 +112,25 @@ function TrabajosDashboard({ datos }: { datos?: AnalisisTrabajosData }) {
 
   const data = datos ?? analisisTrabajos
   const entradasMensuales = loading ? data.entradasMensuales : (entradasReales ?? data.entradasMensuales)
+  const clientes = clientesReales ?? data.clientes
+  const total = totalClientes ?? data.clientes.reduce((acc, c) => acc + c.trabajosAnio, 0)
+  const productos = productosReales ?? data.productos
+  const totalProd = totalProductos ?? data.productos.reduce((acc, p) => acc + p.unidadesAnio, 0)
+  const metricas = metricasReales ?? {
+    trabajosEsteMes: data.trabajosEsteMes,
+    variacionEsteMes: data.variacionEsteMes,
+    trabajosEsteAnio: data.trabajosEsteAnio,
+    variacionEsteAnio: data.variacionEsteAnio,
+  }
+  const trimestres = trimestresReales ?? data.trimestres
 
-  const clientChartData = data.clientes.map((c, i) => ({
+  const clientChartData = clientes.map((c, i) => ({
     nombre: c.nombre,
     valor: c.trabajosAnio,
     color: CHART_COLORS[i % CHART_COLORS.length],
   }))
 
-  const productChartData = data.productos.map((p, i) => ({
+  const productChartData = productos.map((p, i) => ({
     nombre: p.nombre,
     valor: p.unidadesAnio,
     color: CHART_COLORS[i % CHART_COLORS.length],
@@ -138,7 +187,7 @@ function TrabajosDashboard({ datos }: { datos?: AnalisisTrabajosData }) {
       </div>
 
       {tab === 'resumen' && (
-        <div className="grid gap-4 lg:grid-cols-3">
+        <div className="grid gap-4 lg:grid-cols-2">
           <Card className="lg:col-span-2">
             <CardHeader>
               <CardTitle className="text-base">Entradas de trabajos</CardTitle>
@@ -158,7 +207,7 @@ function TrabajosDashboard({ datos }: { datos?: AnalisisTrabajosData }) {
               <CardTitle className="text-base">Indicadores por trimestre</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
-              {data.trimestres.map((item, i) => (
+              {trimestres.map((item, i) => (
                 <div key={i} className="flex flex-col gap-1">
                   <span className="text-xs text-muted-foreground">{i + 1}º trimestre</span>
                   <div className="flex items-center justify-between">
@@ -172,26 +221,26 @@ function TrabajosDashboard({ datos }: { datos?: AnalisisTrabajosData }) {
             </CardContent>
           </Card>
 
-          <Card className="lg:col-span-3">
+          <Card className="lg:col-span-2">
             <CardContent className="grid gap-4 sm:grid-cols-2">
               <div className="flex flex-col gap-1">
                 <span className="text-xs text-muted-foreground">Trabajos este mes</span>
-                <span className="text-lg font-bold text-primary">{fmt(data.trabajosEsteMes)} trabajos</span>
-                <span className={`text-xs ${data.variacionEsteMes >= 0 ? 'text-accent' : 'text-destructive'}`}>
-                  {data.variacionEsteMes >= 0 ? '+' : ''}{data.variacionEsteMes} %
+                <span className="text-lg font-bold text-primary">{fmt(metricas.trabajosEsteMes)} trabajos</span>
+                <span className={`text-xs ${metricas.variacionEsteMes >= 0 ? 'text-accent' : 'text-destructive'}`}>
+                  {metricas.variacionEsteMes >= 0 ? '+' : ''}{metricas.variacionEsteMes} %
                 </span>
               </div>
               <div className="flex flex-col gap-1">
                 <span className="text-xs text-muted-foreground">Trabajos este año</span>
-                <span className="text-lg font-bold text-primary">{fmt(data.trabajosEsteAnio)} trabajos</span>
-                <span className={`text-xs ${data.variacionEsteAnio >= 0 ? 'text-accent' : 'text-destructive'}`}>
-                  {data.variacionEsteAnio >= 0 ? '+' : ''}{data.variacionEsteAnio} %
+                <span className="text-lg font-bold text-primary">{fmt(metricas.trabajosEsteAnio)} trabajos</span>
+                <span className={`text-xs ${metricas.variacionEsteAnio >= 0 ? 'text-accent' : 'text-destructive'}`}>
+                  {metricas.variacionEsteAnio >= 0 ? '+' : ''}{metricas.variacionEsteAnio} %
                 </span>
               </div>
             </CardContent>
           </Card>
 
-          <Card className="lg:col-span-2">
+          <Card className="lg:col-span-1">
             <CardHeader className="flex flex-row items-center justify-between">
               <div>
                 <CardTitle className="text-base">Trabajos por cliente</CardTitle>
@@ -202,13 +251,15 @@ function TrabajosDashboard({ datos }: { datos?: AnalisisTrabajosData }) {
               </Button>
             </CardHeader>
             <CardContent>
+              <div className="mb-4">
+                <span className="text-xs text-muted-foreground">Total</span>
+                <span className="text-lg font-bold text-primary">{fmt(total)} trabajos</span>
+              </div>
               <DonutChart data={clientChartData} colors={CHART_COLORS} />
               <div className="mt-4 space-y-2">
-                {data.clientes.map((c) => (
+                {clientes.map((c) => (
                   <div key={c.codigo} className="flex items-center justify-between">
-                    <span className="truncate text-xs text-foreground">
-                      {c.codigo !== 'otros' ? `${c.codigo} - ` : ''}{c.nombre}
-                    </span>
+                    <span className="truncate text-xs text-foreground">{c.nombre}</span>
                     <span className={`text-xs font-medium ${c.diferencia >= 0 ? 'text-accent' : 'text-destructive'}`}>
                       {fmt(c.trabajosAnio)} trabajos ({c.diferencia >= 0 ? '+' : ''}{c.diferencia}%)
                     </span>
@@ -224,9 +275,13 @@ function TrabajosDashboard({ datos }: { datos?: AnalisisTrabajosData }) {
               <p className="mt-1 text-xs text-muted-foreground">Unidades producidas por producto</p>
             </CardHeader>
             <CardContent>
+              <div className="mb-4">
+                <span className="text-xs text-muted-foreground">Total</span>
+                <span className="text-lg font-bold text-primary">{fmt(totalProd)} unid.</span>
+              </div>
               <DonutChart data={productChartData} colors={CHART_COLORS} />
               <div className="mt-4 space-y-2">
-                {data.productos.map((p) => (
+                {productos.map((p) => (
                   <div key={p.nombre} className="flex items-center justify-between">
                     <span className="truncate text-xs text-foreground">{p.nombre}</span>
                     <span className={`text-xs font-medium ${p.diferencia >= 0 ? 'text-accent' : 'text-destructive'}`}>
@@ -254,7 +309,7 @@ function TrabajosDashboard({ datos }: { datos?: AnalisisTrabajosData }) {
               height={260}
             />
             <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              {data.trimestres.map((item, i) => (
+              {trimestres.map((item, i) => (
                 <div key={i} className="rounded-lg border border-border p-4">
                   <span className="text-xs text-muted-foreground">{i + 1}º trimestre</span>
                   <p className="mt-1 text-xl font-bold text-primary">{fmt(item.trabajos)}</p>
@@ -275,44 +330,41 @@ function TrabajosDashboard({ datos }: { datos?: AnalisisTrabajosData }) {
             <p className="mt-1 text-xs text-muted-foreground">Unidades producidas y variación anual</p>
           </CardHeader>
           <CardContent>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="flex flex-col gap-1">
-                <span className="text-xs text-muted-foreground">Trabajos este mes</span>
-                <span className="text-lg font-bold text-primary">{fmt(data.trabajosEsteMes)} trabajos</span>
-                <span className={`text-xs ${data.variacionEsteMes >= 0 ? 'text-accent' : 'text-destructive'}`}>
-                  {data.variacionEsteMes >= 0 ? '+' : ''}{data.variacionEsteMes} %
-                </span>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="flex flex-col gap-1">
+                  <span className="text-xs text-muted-foreground">Trabajos este mes</span>
+                  <span className="text-lg font-bold text-primary">{fmt(metricas.trabajosEsteMes)} trabajos</span>
+                  <span className={`text-xs ${metricas.variacionEsteMes >= 0 ? 'text-accent' : 'text-destructive'}`}>
+                    {metricas.variacionEsteMes >= 0 ? '+' : ''}{metricas.variacionEsteMes} %
+                  </span>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <span className="text-xs text-muted-foreground">Unidades este año</span>
+                  <span className="text-lg font-bold text-primary">{fmt(totalProd)} unid.</span>
+                </div>
               </div>
-              <div className="flex flex-col gap-1">
-                <span className="text-xs text-muted-foreground">Trabajos este año</span>
-                <span className="text-lg font-bold text-primary">{fmt(data.trabajosEsteAnio)} trabajos</span>
-                <span className={`text-xs ${data.variacionEsteAnio >= 0 ? 'text-accent' : 'text-destructive'}`}>
-                  {data.variacionEsteAnio >= 0 ? '+' : ''}{data.variacionEsteAnio} %
-                </span>
-              </div>
-            </div>
-            <div className="mt-6 overflow-x-auto">
-              <table className="w-full text-left text-sm">
-                <thead>
-                  <tr className="border-b border-border bg-secondary/30">
-                    <th className="px-4 py-3 font-medium text-muted-foreground">Producto</th>
-                    <th className="px-4 py-3 font-medium text-muted-foreground">Unid. año</th>
-                    <th className="px-4 py-3 font-medium text-muted-foreground">Dif.</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border">
-                  {data.productos.map((p) => (
-                    <tr key={p.nombre} className="transition-colors hover:bg-secondary/30">
-                      <td className="px-4 py-3 text-foreground">{p.nombre}</td>
-                      <td className="px-4 py-3 font-medium text-primary">{fmt(p.unidadesAnio)}</td>
-                      <td className={`px-4 py-3 text-xs font-medium ${p.diferencia >= 0 ? 'text-accent' : 'text-destructive'}`}>
-                        {p.diferencia >= 0 ? '+' : ''}{p.diferencia} %
-                      </td>
+              <div className="mt-6 overflow-x-auto">
+                <table className="w-full text-left text-sm">
+                  <thead>
+                    <tr className="border-b border-border bg-secondary/30">
+                      <th className="px-4 py-3 font-medium text-muted-foreground">Producto</th>
+                      <th className="px-4 py-3 font-medium text-muted-foreground">Unid. año</th>
+                      <th className="px-4 py-3 font-medium text-muted-foreground">Dif.</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {productos.map((p) => (
+                      <tr key={p.nombre} className="transition-colors hover:bg-secondary/30">
+                        <td className="px-4 py-3 text-foreground">{p.nombre}</td>
+                        <td className="px-4 py-3 font-medium text-primary">{fmt(p.unidadesAnio)}</td>
+                        <td className={`px-4 py-3 text-xs font-medium ${p.diferencia >= 0 ? 'text-accent' : 'text-destructive'}`}>
+                          {p.diferencia >= 0 ? '+' : ''}{p.diferencia} %
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
           </CardContent>
         </Card>
       )}
