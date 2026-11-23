@@ -39,6 +39,7 @@ export function SessionSync() {
   const myTabId = useRef<string>('')
   const channelRef = useRef<BroadcastChannel | null>(null)
   const hasCheckedRef = useRef(false)
+  const respondedTabsRef = useRef<Set<string>>(new Set())
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -71,6 +72,18 @@ export function SessionSync() {
         }
       }
 
+      if (data.type === 'who-is-here' && data.sessionId === mySessionId.current && data.tabId !== myTabId.current) {
+        channel.postMessage({ type: 'i-am-here', sessionId: mySessionId.current, tabId: myTabId.current })
+      }
+
+      if (data.type === 'i-am-here' && data.sessionId === mySessionId.current && data.tabId !== myTabId.current) {
+        respondedTabsRef.current.add(data.tabId)
+        if (!hasCheckedRef.current) {
+          hasCheckedRef.current = true
+          setBlocked(true)
+        }
+      }
+
       if (data.type === 'session-force-logout' && data.sessionId !== mySessionId.current) {
         supabase.auth.signOut().catch(() => {})
         localStorage.removeItem('labUserType')
@@ -83,6 +96,15 @@ export function SessionSync() {
     }
 
     channel.postMessage({ type: 'tab-join', sessionId: mySessionId.current, tabId: myTabId.current })
+
+    channel.postMessage({ type: 'who-is-here', sessionId: mySessionId.current, tabId: myTabId.current })
+
+    setTimeout(() => {
+      if (respondedTabsRef.current.size > 0 && !hasCheckedRef.current) {
+        hasCheckedRef.current = true
+        setBlocked(true)
+      }
+    }, 300)
 
     const onStorage = (e: StorageEvent) => {
       if (e.key === SESSION_KEY && e.newValue && e.newValue !== mySessionId.current) {
