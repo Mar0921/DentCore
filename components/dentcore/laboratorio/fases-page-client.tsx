@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
-import { Search, FileText, AlertCircle } from 'lucide-react'
+import { Search, FileText, AlertCircle, Plus, Eye, EyeOff } from 'lucide-react'
 import { FASES_PROCESO } from '@/data/fases-data'
 import type { Fase, Empleado } from '@/types/laboratorio'
 
@@ -23,9 +23,15 @@ export function FasesPageClient({ modo = 'admin' }: { modo?: 'admin' | 'empleado
   const [asignacionesLocales, setAsignacionesLocales] = useState<Record<string, string>>({})
   const [labId, setLabId] = useState<string | null>(null)
   const [labNombre, setLabNombre] = useState<string>('')
+  const [newPhaseName, setNewPhaseName] = useState('')
+  const [creating, setCreating] = useState(false)
+  const [hidden, setHidden] = useState<Set<string>>(new Set())
 
   useEffect(() => {
     loadLaboratorio().then((id) => {
+      if (id) {
+        try { setHidden(new Set(JSON.parse(localStorage.getItem(`fases_ocultas_${id}`) || '[]'))) } catch {}
+      }
       loadFases(id)
       loadEmpleados(id)
     })
@@ -113,7 +119,25 @@ export function FasesPageClient({ modo = 'admin' }: { modo?: 'admin' | 'empleado
       }
     })
 
-    setFases(merged)
+    const predefinedNames = new Set(FASES_PROCESO.map((f) => f.nombre))
+    const extras = dbFases
+      .filter((f: any) => !predefinedNames.has(f.nombre))
+      .map((f: any) => {
+        const empleadoId =
+          columnaEmpleadoSoportada === false ? local[f.nombre] : f.empleado_id || local[f.nombre]
+        return {
+          id: f.id || '',
+          nombre: f.nombre,
+          orden: f.orden ?? 999,
+          color: f.color || 'bg-secondary/30 text-secondary-foreground',
+          descripcion: f.descripcion || '',
+          empleado_id: empleadoId || null,
+          empleado_nombre: empleados.find((e) => e.id === empleadoId)?.nombre || null,
+        }
+      })
+
+    const all = [...merged, ...extras]
+    setFases(all.filter((f) => !hidden.has(f.nombre)))
     setAsignacionesLocales(local)
     setLoading(false)
   }
@@ -228,13 +252,46 @@ export function FasesPageClient({ modo = 'admin' }: { modo?: 'admin' | 'empleado
     }
   }
 
+  async function createPhase() {
+    const nombre = newPhaseName.trim()
+    if (!nombre || !labId) return
+    setCreating(true)
+    try {
+      const { error } = await supabase.from('fases').insert({
+        nombre,
+        orden: fases.length + 1,
+        color: 'bg-secondary/30 text-secondary-foreground',
+        descripcion: '',
+        laboratorio_id: labId,
+      })
+      if (error) throw error
+      setNewPhaseName('')
+      await loadFases(labId)
+    } catch (err) {
+      console.error('Error creando fase:', err)
+    } finally {
+      setCreating(false)
+    }
+  }
+
+  function toggleHide(nombre: string) {
+    setHidden((prev) => {
+      const next = new Set(prev)
+      if (next.has(nombre)) { next.delete(nombre) } else { next.add(nombre) }
+      if (labId) localStorage.setItem(`fases_ocultas_${labId}`, JSON.stringify([...next]))
+      return next
+    })
+  }
+
   const filtered = useMemo(() => {
-    if (!search) return fases
+    const isHidden = (name: string) => modo === 'empleado' ? hidden.has(name) : false
+    if (!search) return fases.filter((f) => !isHidden(f.nombre))
     const term = search.toLowerCase()
     return fases.filter(
       (f) =>
-        f.nombre.toLowerCase().includes(term) ||
-        (f.empleado_nombre || '').toLowerCase().includes(term),
+        !isHidden(f.nombre) &&
+        (f.nombre.toLowerCase().includes(term) ||
+        (f.empleado_nombre || '').toLowerCase().includes(term)),
     )
   }, [fases, search])
 
@@ -253,16 +310,26 @@ export function FasesPageClient({ modo = 'admin' }: { modo?: 'admin' | 'empleado
         </p>
       </div>
 
-      <div className="relative max-w-md">
-        <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-        <input
-          type="text"
-          placeholder="Buscar fase..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="h-10 w-full rounded-lg border border-border bg-card pl-9 pr-3 text-sm text-foreground outline-none placeholder:text-muted-foreground/70 focus:border-accent focus:ring-2 focus:ring-accent/30"
-        />
-      </div>
+      {modo !== 'empleado' && (
+        <div className="flex gap-2 max-w-md">
+          <input
+            type="text"
+            placeholder="Nueva fase..."
+            value={newPhaseName}
+            onChange={(e) => setNewPhaseName(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') createPhase() }}
+            className="h-10 flex-1 rounded-lg border border-border bg-card px-3 text-sm text-foreground outline-none placeholder:text-muted-foreground/70 focus:border-accent focus:ring-2 focus:ring-accent/30"
+          />
+          <button
+            onClick={createPhase}
+            disabled={creating || !newPhaseName.trim()}
+            className="h-10 inline-flex items-center gap-1 rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground disabled:opacity-50"
+          >
+            <Plus className="size-4" />
+            Agregar
+          </button>
+        </div>
+      )}
 
       {loading ? (
         <Card>
@@ -300,8 +367,19 @@ export function FasesPageClient({ modo = 'admin' }: { modo?: 'admin' | 'empleado
                     return (
                     <tr key={fase.nombre} className="transition-colors hover:bg-secondary/30">
                       <td className="px-4 py-3 text-muted-foreground">{fase.orden}</td>
-                      <td className="px-4 py-3">
-                        <span className="font-medium text-foreground">{fase.nombre}</span>
+                       <td className="px-4 py-3">
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium text-foreground">{fase.nombre}</span>
+                          {modo !== 'empleado' && (
+                            <button
+                              onClick={() => toggleHide(fase.nombre)}
+                              className="text-muted-foreground hover:text-foreground"
+                              title={hidden.has(fase.nombre) ? 'Mostrar' : 'Ocultar'}
+                            >
+                              {hidden.has(fase.nombre) ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                            </button>
+                          )}
+                        </div>
                       </td>
                       <td className="px-4 py-3 min-w-56">
                         {modo === 'empleado' ? (

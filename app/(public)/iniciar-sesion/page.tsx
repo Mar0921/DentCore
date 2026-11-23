@@ -11,7 +11,13 @@ export const metadata: Metadata = {
 export default function IniciarSesionPage() {
   return (
     <main className="flex min-h-screen bg-background">
-      <div className="hidden w-1/2 bg-primary lg:block" />
+      <div className="hidden w-1/2 lg:block">
+        <img
+          src="/eler-dentist-4031431.jpg"
+          alt="Dentista"
+          className="h-full w-full object-cover object-right translate-x-2"
+        />
+      </div>
       <div className="flex w-full flex-col justify-center px-6 py-10 sm:px-10 lg:w-1/2">
         <div className="mx-auto w-full max-w-sm">
           <div className="flex items-center gap-2 text-primary">
