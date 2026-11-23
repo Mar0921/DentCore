@@ -35,11 +35,16 @@ function generateTabId() {
 export function SessionSync() {
   const router = useRouter()
   const [blocked, setBlocked] = useState(false)
+  const blockedRef = useRef(false)
   const mySessionId = useRef<string>('')
   const myTabId = useRef<string>('')
   const channelRef = useRef<BroadcastChannel | null>(null)
   const hasCheckedRef = useRef(false)
   const respondedTabsRef = useRef<Set<string>>(new Set())
+
+  useEffect(() => {
+    blockedRef.current = blocked
+  }, [blocked])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -86,7 +91,7 @@ export function SessionSync() {
 
       if (data.type === 'tab-leave' && data.sessionId === mySessionId.current && data.tabId !== myTabId.current) {
         respondedTabsRef.current.delete(data.tabId)
-        if (respondedTabsRef.current.size === 0 && blocked) {
+        if (respondedTabsRef.current.size === 0 && blockedRef.current) {
           hasCheckedRef.current = false
           setBlocked(false)
         }
