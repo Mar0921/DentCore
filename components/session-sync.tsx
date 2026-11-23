@@ -84,6 +84,14 @@ export function SessionSync() {
         }
       }
 
+      if (data.type === 'tab-leave' && data.sessionId === mySessionId.current && data.tabId !== myTabId.current) {
+        respondedTabsRef.current.delete(data.tabId)
+        if (respondedTabsRef.current.size === 0 && blocked) {
+          hasCheckedRef.current = false
+          setBlocked(false)
+        }
+      }
+
       if (data.type === 'session-force-logout' && data.sessionId !== mySessionId.current) {
         supabase.auth.signOut().catch(() => {})
         localStorage.removeItem('labUserType')
